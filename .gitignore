@@ -1,0 +1,37 @@
+# Unreal Engine
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Generated project files
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# IDE / editor
+.vs/
+.idea/
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs / temporary
+*.log
+*.tmp
+*.temp
+
+# Packaging / local output
+Dist/
+Packages/
+Staging/
+
+# Keep repository assets and source tracked explicitly.
