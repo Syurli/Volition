@@ -1,5 +1,6 @@
 import { AgentRuntime, type ActionIntent, type ActionResult, type ContextSnapshot, type Stimulus, type TickContext } from '@volition/core';
 import { envelope, type KnownEnvelope, type ProtocolTransport } from '@volition/protocol';
+import { assertValidProjectConfig, type AgentDefinition } from '@volition/schema';
 
 export interface WebHostAdapter {
   readonly projectId: string;
@@ -14,6 +15,8 @@ export interface WebBridgeOptions {
   readonly telemetryEnabled?: boolean;
   readonly transport?: ProtocolTransport;
 }
+
+export type AgentRuntimeFactory = (definition: AgentDefinition) => AgentRuntime;
 
 /** Generic Web Host bridge. It has no Tactical Wizard/Babylon/Jolt/Vlox knowledge. */
 export class VolitionWebBridge {
@@ -37,6 +40,21 @@ export class VolitionWebBridge {
     this.#ensureActive();
     if (this.#agents.has(agentId)) throw new Error(`Agent already registered: ${agentId}.`);
     this.#agents.set(agentId, runtime);
+  }
+
+  /**
+   * Loads portable versioned config while keeping runtime/policy construction outside the Bridge.
+   * The injected factory is the host/application composition boundary; the Bridge does not assume Utility AI.
+   */
+  public loadProjectConfig(config: unknown, createRuntime: AgentRuntimeFactory): readonly string[] {
+    this.#ensureActive();
+    assertValidProjectConfig(config);
+    const loaded: string[] = [];
+    for (const definition of [...config.agents].sort((a, b) => a.id.localeCompare(b.id, 'en'))) {
+      this.registerAgent(definition.id, createRuntime(definition));
+      loaded.push(definition.id);
+    }
+    return loaded;
   }
 
   public setTelemetryEnabled(enabled: boolean): void {
