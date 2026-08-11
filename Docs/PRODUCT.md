@@ -8,98 +8,73 @@
 
 ## Product Statement
 
-Volition 面向游戏中的自主 Agent，提供从 Context 到 Decision、从 Intent 到 Behavior Execution，以及资源竞争、调度、配置与可解释调试的一套统一组织方式。
+Volition 面向游戏中的自主 Agent，提供从 Context、Observation、Memory/Belief 到 Decision、Intent、Behavior Execution 和可解释 Trace 的统一组织方式，并在真实需求出现后继续扩展资源竞争与调度。
 
-产品本体不是某一个引擎插件。Volition 由 **Portable Core + Browser Workbench + Engine Bridges** 共同组成。
+产品本体不是某一个引擎插件。Volition 由 **Portable Core + Browser Workbench + Host Bridges** 共同组成。
 
-## Core Problem
+## Reference Application #1
 
-传统游戏 AI 很容易随规模增长退化为：
-
-- 大量散落的条件判断；
-- 行为之间隐式抢占；
-- 生命周期与资源所有权不清晰；
-- 决策与执行耦合；
-- 配置被锁在某个引擎资产格式；
-- Debug 时难以回答“为什么做了这个行为”；
-- 每换一个引擎就需要重新开发编辑器和调试器。
-
-Volition 希望把这些问题提升到 Agent 与平台层统一处理。
-
-## Core Loop
-
-```text
-Environment → Context → Decision → Intent → Behavior → Execution → Environment
-```
+第一个真实 Reference Application 是 `Syurli/TWR_Dev` / 《战术巫师：裂隙突围》，首个 Reference Host 为 Web。它先验证 Core、Schema、Protocol、Web Bridge、Workbench 与 Trace；Unreal 作为第二生产验证 Host，证明设计可跨引擎/跨语言实现。
 
 ## Product Pillars
 
-### 1. Agency
+### Agency
+Agent 根据可获得的 Context、Observation 与 Belief 形成行动，而不是持续消费 Host 的隐藏真实状态。
 
-Agent 根据 Context 和目标形成行动，而不是只依赖外部脚本逐条推动。
+### Separation of Decision and Execution
+“选择做什么”与“具体怎么执行”独立演进。Volition 产出 Intent / ActionIntent；Host 执行移动、射击、物理、导航等世界操作，并返回 ActionResult。
 
-### 2. Separation of Decision and Execution
+### Portable Authoring
+使用引擎无关、版本化配置与协议。Host-specific 数据只能进入明确 extension namespace。
 
-“选择做什么”和“具体怎么做”可以独立演进、组合和调试。
+### Browser-first Tooling
+**Volition Workbench 本身就是 GitHub Pages 发布应用。** 首页、品牌、About、文档入口都属于 Workbench Shell，不维护第二套功能重复官网。
 
-### 3. Portable Authoring
+### Thin Bridges
+Bridge 处理 identity mapping、Context/Stimulus adapter、Behavior/Action executor、config loading 与 telemetry，不重新定义 Core。
 
-尽量使用引擎无关、可版本化的配置与资产契约。相同产品语义应能够跨 Bridge 复用，而不是绑定某个引擎对象格式。
+### Debuggability
+Decision Trace 从第一版就是核心运行数据，必须能回答候选项分数/拒绝理由、最终选择、Intent 切换与 ActionResult。
 
-### 4. Browser-first Tooling
+## Reference Slice 01
 
-主要编辑、调试与可视化体验位于独立 Web 浏览器工作台，使工具可以跨引擎复用，并为远程调试、自动化与 AI 辅助编辑保留统一入口。
+最小 Core 概念：
 
-### 5. Thin Bridges
+- Agent / TickContext / ContextSnapshot
+- Stimulus / Observation
+- MemoryRecord / Belief
+- DecisionCandidate / DecisionResult
+- Intent / BehaviorReference
+- ActionIntent / ActionResult
+- DecisionTrace
 
-引擎插件只处理宿主绑定、执行适配、配置加载、通信与少量项目设置。Volition 不为每个引擎重复开发完整编辑器。
+第一 Reference Agent 是普通持枪敌人：
 
-### 6. Explicit Ownership
+```text
+Patrol → hear/perceive → Investigate → see/confirm → Engage
+       → lose target → Search last-known information
+       → confidence decay → Patrol
+```
 
-行为、资源、请求和生命周期的所有权应明确，避免隐式状态竞争。
+首版 Decision Policy 使用 Utility Decision + explicit behavior state，但 Decision API 可替换，Volition 不被定义为 Utility AI 框架。
 
-### 7. Debuggability
+## Host Boundary
 
-开发者应能够回答：当前 Agent 在做什么、为什么选择它、什么阻止了其他行为，以及什么时候发生了切换。
+Host 拥有真实世界状态、actor position/facing、LOS、NoiseEvent、导航、物理、武器与战斗执行；Volition 只消费经过 Host 适配的事实，不直接读取 Babylon、Jolt、Vlox、Tactical Wizard、Unreal、Unity 或 Godot 类型。
 
-## Product Surfaces
+不可见目标不能持续获得精确实时世界坐标。Raw Stimulus 必须先成为 Observation，才可进入 Memory / Belief。
 
-### Volition Workbench
+## Workbench Modes
 
-浏览器端主工具：配置、图形化编辑、运行时 Inspector、Timeline、资源/请求分析、验证与项目管理。
+- **Offline / Pages**：bundled demo、config、validation、runtime snapshot、Trace Inspector 独立可用；
+- **Live production**：HTTPS Pages 只尝试安全 transport（首版 `wss://`）；
+- **Local development**：可使用 `ws://localhost` / LAN 调试 endpoint，并在 UI 明确与 production mode 区分。
 
-### Portable Packages
+Workbench 不成为 shipping runtime 强依赖，telemetry 关闭不能改变决策结果。
 
-- **Core**：引擎无关的产品语义与可移植运行逻辑；
-- **Schema**：可持久化、可跨引擎传递的配置/资产契约；
-- **Protocol**：Workbench 与 Bridge 的实时调试/控制消息契约。
+## Deliberately Deferred
 
-### Bridges
-
-- Unreal Engine：首个正式生产验证 Bridge；
-- Unity：预留；
-- Godot：预留；
-- Web：预留，作为浏览器/JS 游戏运行环境适配。
-
-## Runtime Stance
-
-Workbench 不应成为 shipped game 的必需服务。编辑结果应可本地加载，运行时决策与执行不能因为浏览器未连接而停止。Live connection 主要用于开发期调试、控制与同步。
-
-## Initial Users
-
-第一阶段主要服务需要复杂 NPC / Enemy 行为、可解释调试和跨项目配置管理的游戏开发者。首个生产 Bridge 聚焦 Unreal C++ 项目，但共享层按跨引擎产品设计。
-
-## Non-Goals — Pre-Alpha
-
-当前阶段不承诺：
-
-- UDMBF 1.0 API 或资产兼容；
-- 开箱即用的通用 NPC 大脑；
-- LLM 驱动 Agent；
-- 完整网络复制解决方案；
-- Unity / Godot 与 Unreal 在首版即功能完全对等；
-- 在每个引擎内提供完整可视化编辑器；
-- 稳定公共 API。
+第一纵向切片不实现：Scheduler / Request / Resource / Ownership、完整 Squad、Cover/Flank/Suppression、GOAP、HTN、Behavior Tree 编辑器、LLM planner、Director、Mass/ECS、网络复制、云账户或后端项目存储。
 
 ## Relationship to UDMBF 1.0
 

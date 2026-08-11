@@ -1,60 +1,83 @@
 # Volition Workbench
 
-Volition Workbench 是 **能动 Volition** 的主要编辑、调试与可视化界面，运行于独立 Web 浏览器，而不是嵌入某个游戏引擎编辑器。
-
-## Why Browser-first
-
-- 一套 UI 服务 Unreal / Unity / Godot / Web；
-- 与引擎升级周期解耦；
-- 容易实现远程连接、实时 Trace 和多实例选择；
-- 配置文件可以脱离引擎项目被检查、比较和版本控制；
-- 为后续自动化与 LLM 辅助编辑提供统一入口；
-- 避免在多个引擎中重复维护 Slate、UI Toolkit、Godot Control 等完整工具栈。
-
-## Initial Surfaces
+Volition Workbench 是 **能动 Volition** 的正式浏览器产品界面，也是 Volition GitHub Pages 发布站点本体。
 
 ```text
-Project
-├─ Config / Definitions
-├─ Validation
-└─ Bridge Connections
+GitHub Pages
+    ↓
+Apps/Workbench production build
+    ↓
+Volition Workbench
+```
+
+不存在一套独立宣传官网再加另一套 localhost 编辑器。品牌、版本、文档入口、Demo 与 Runtime Inspector 都属于同一个 Workbench Shell。
+
+## Reference Slice 01 Focus
+
+第一版优先做 **Runtime Inspector / Decision Trace**，而不是大型节点图编辑器。
+
+最低界面：
+
+```text
+Project / Demo
+├─ portable config viewer
+├─ schema validation
+└─ connection status
 
 Runtime
-├─ Agents
-├─ Decision / Intent
-├─ Behavior
-├─ Requests / Resources
-├─ Scheduler
+├─ Agent List
+├─ Context
+├─ Observation
+├─ Memory / Belief
+├─ Decision Candidates
+├─ Selected Intent
+├─ Current Action / Action Result
 └─ Timeline / Trace
 ```
 
-## Connection Model
+Workbench 必须能回答：**这个 Agent 为什么这样做？**
 
-Workbench 通过版本化 Volition Protocol 与 Bridge 通信。Transport 可以根据环境不同使用 WebSocket、IPC 或其他实现。
+## Offline / Pages Mode
 
-Workbench 不直接读取 Unreal UObject、Unity GameObject 或 Godot Node；这些宿主对象必须由 Bridge 转换为稳定的 Volition identity、metadata 和 extension data。
+GitHub Pages 是静态托管。无 Bridge、无 Tactical Wizard 运行实例时仍必须可用：
 
-## Offline Mode
+- 打开 bundled Tactical Wizard generic rifle fixture；
+- 回放固定 stimulus stream；
+- 查看 Patrol → Investigate → Engage → Search → Patrol；
+- 查看 config、runtime snapshot 与 Decision Trace；
+- 导入/查看 portable config；
+- schema validation。
 
-即使没有运行中的游戏实例，Workbench 也应能够：
-
-- 打开/创建 portable config；
-- 编辑和校验 schema；
-- 查看引用关系；
-- 比较配置差异；
-- 导入/导出可移植资产。
+Pages 不拥有游戏 AI runtime、authoritative state、用户项目数据库，也不引入隐藏云端代理。
 
 ## Live Mode
 
-连接 Bridge 后增加：
+Workbench 通过版本化 Volition Protocol 与 Bridge 通信。Protocol 与 transport 解耦。
 
-- runtime agent inventory；
-- snapshots；
-- decision / scheduler reasons；
-- resource ownership；
-- trace / timeline；
-- development-only commands。
+### Pages production
 
-## Engine-side UI Boundary
+Pages 由 HTTPS 提供。生产连接只应尝试浏览器安全上下文允许的 endpoint（首版为 `wss://`）。对 `ws://`、mixed content、无效协议或连接失败必须给出准确诊断，Offline Demo 不受影响。
 
-Bridge 可以提供：项目设置、端口/连接配置、资产绑定、打开 Workbench 按钮等必要 UI。但任何跨引擎都需要的复杂工具都应优先放回 Workbench。
+### Local development
+
+本地开发环境可以连接 `ws://localhost` / 局域网调试 endpoint。该能力不能被描述为 Pages production 已支持。
+
+后续若需要 secure localhost companion、证书或 native bridge，应单独建立 ADR/任务。
+
+## Static Hosting Rules
+
+- Vite base path 通过构建环境配置，Pages 使用 `/Volition/`；
+- 应用保持单页/无 history-router 服务端依赖，直接刷新不要求 SPA fallback；
+- 不硬编码 localhost API；
+- 不要求 SSR；
+- static asset 从 Vite base URL 解析；
+- Pages workflow 与本地 production 使用同一 `npm run build` artifact。
+
+## Runtime Independence
+
+Workbench 是开发工具，不是 shipping runtime 网络依赖：
+
+- 浏览器关闭后 Host runtime 继续执行；
+- telemetry 可以关闭；
+- live connection 断开不改变 decision result；
+- portable config 由 Host/Bridge 本地加载。
