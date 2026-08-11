@@ -1,3 +1,4 @@
+import type { AgentRuntimeSnapshot, DecisionTrace } from '@volition/core';
 import { deserializeEnvelope, type KnownEnvelope } from '@volition/protocol';
 
 export type ConnectionState = 'offline' | 'connecting' | 'connected' | 'error';
@@ -5,6 +6,33 @@ export type ConnectionState = 'offline' | 'connecting' | 'connected' | 'error';
 export interface EndpointValidation {
   readonly valid: boolean;
   readonly message: string;
+}
+
+export interface LiveTelemetryState {
+  readonly agentIds: readonly string[];
+  readonly snapshot: AgentRuntimeSnapshot | null;
+  readonly latestTrace: DecisionTrace | null;
+}
+
+export const EMPTY_LIVE_TELEMETRY: LiveTelemetryState = {
+  agentIds: [],
+  snapshot: null,
+  latestTrace: null,
+};
+
+export function reduceLiveTelemetry(state: LiveTelemetryState, message: KnownEnvelope): LiveTelemetryState {
+  switch (message.type) {
+    case 'agent_inventory':
+      return { ...state, agentIds: [...message.payload.agentIds] };
+    case 'agent_runtime_snapshot':
+      return { ...state, snapshot: structuredClone(message.payload.snapshot) };
+    case 'trace_batch': {
+      const latest = message.payload.events.at(-1);
+      return latest === undefined ? state : { ...state, latestTrace: structuredClone(latest) };
+    }
+    default:
+      return state;
+  }
 }
 
 export function validateLiveEndpoint(endpoint: string, pageProtocol: string): EndpointValidation {
