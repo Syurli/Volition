@@ -1,7 +1,7 @@
 import type { AgentRuntimeSnapshot, DecisionTrace, Stimulus, Vector3 } from '@volition/core';
 import { createTacticalWizardReferenceRuntime } from '@volition/example-tactical-wizard';
 import { createGrid, findPath, gridKey, hasLineOfSight, isWalkable, type GridPoint, type NavigationGrid } from './navigation';
-import { discoverCoverSlots, occupiedPositionsAreUnique, selectCoverSlot, type CoverSlot, type SquadRole } from './squadTactics';
+import { discoverCoverSlots, selectCoverSlot, type CoverSlot, type SquadRole } from './squadTactics';
 
 export interface SimulationOverlaySettings {
   readonly vision: boolean;
@@ -16,7 +16,7 @@ export interface TacticalWizardAgentView {
   readonly id: string; readonly label: string; readonly position: GridPoint; readonly facing: GridPoint; readonly path: readonly GridPoint[];
   readonly selectedIntent: string; readonly beliefConfidence: number; readonly beliefSource: string; readonly targetVisible: boolean;
   readonly lastKnownPosition: GridPoint | null; readonly role: SquadRole; readonly coverTarget: GridPoint | null; readonly peekTarget: GridPoint | null;
-  readonly firePulse: number; readonly fireTarget: GridPoint | null; readonly searchPulse: number;
+  readonly firePulse: number; readonly fireTarget: GridPoint | null; readonly searchPulse: number; readonly stalledTicks: number;
 }
 export interface TacticalWizardSquadView {
   readonly id: string; readonly alertState: SquadAlertState; readonly sourceAgentId: string | null; readonly sharedLastKnownPosition: GridPoint | null;
@@ -25,11 +25,17 @@ export interface TacticalWizardSquadView {
 export interface TacticalWizardSimulationState {
   readonly logicalTick: number; readonly agents: readonly TacticalWizardAgentView[]; readonly squad: TacticalWizardSquadView; readonly player: GridPoint;
   readonly patrolPoints: readonly GridPoint[]; readonly patrolIndex: number; readonly coverSlots: readonly CoverSlot[]; readonly hearingRadius: number;
-  readonly visionRange: number; readonly visionFovDegrees: number; readonly latestTraces: readonly DecisionTrace[]; readonly eventLog: readonly string[];
+  readonly visionRange: number; readonly visionFovDegrees: number; readonly movementResolution: number; readonly latestTraces: readonly DecisionTrace[]; readonly eventLog: readonly string[];
   readonly enemy: GridPoint; readonly enemyFacing: GridPoint; readonly path: readonly GridPoint[]; readonly selectedIntent: string;
   readonly beliefConfidence: number; readonly beliefSource: string; readonly targetVisible: boolean; readonly lastKnownPosition: GridPoint | null;
   readonly latestTrace: DecisionTrace | null; readonly latestSnapshot: AgentRuntimeSnapshot | null; readonly firePulse: number; readonly searchPulse: number;
 }
+
+export const SIMULATION_MOVEMENT_SUBDIVISIONS = 4;
+const PLAYER_MOVE_STEP = 1 / SIMULATION_MOVEMENT_SUBDIVISIONS;
+const AGENT_MOVE_STEP = 0.35;
+const POSITION_EPSILON = 0.06;
+const STALLED_REPLAN_TICKS = 8;
 
 export const tacticalWizardTestMap = {
   id: 'tactical-wizard-squad-training-ground', name: 'Tactical Wizard Squad Training Ground', width: 48, height: 30,
@@ -52,7 +58,8 @@ interface MutableMember {
   readonly id: string; readonly label: string; readonly patrolOffset: GridPoint; runtime: ReturnType<typeof createTacticalWizardReferenceRuntime>;
   position: GridPoint; facing: GridPoint; path: readonly GridPoint[]; selectedIntent: string; beliefConfidence: number; beliefSource: string;
   targetVisible: boolean; lastKnownPosition: GridPoint | null; latestTrace: DecisionTrace | null; latestSnapshot: AgentRuntimeSnapshot | null;
-  wasVisible: boolean; role: SquadRole; coverSlot: CoverSlot | null; tacticalTarget: GridPoint | null; firePulse: number; fireTarget: GridPoint | null; searchPulse: number;
+  wasVisible: boolean; role: SquadRole; coverSlot: CoverSlot | null; tacticalTarget: GridPoint | null; firePulse: number; fireTarget: GridPoint | null;
+  searchPulse: number; stalledTicks: number;
 }
 const ALERT_PROPAGATION_TICKS = 2;
 const ALERT_MEMORY_TICKS = 48;
@@ -74,8 +81,17 @@ export class TacticalWizardSimulation {
     this.eventLog.splice(0, this.eventLog.length, 'Simulation reset. Squad patrol initialized.'); return this.getState();
   }
   emitNoise(intensity = 1): void { this.pendingNoiseIntensity = Math.max(this.pendingNoiseIntensity, clamp01(intensity)); this.pushEvent(`T${this.logicalTick}: player test noise emitted.`); }
-  setPlayerPosition(point: GridPoint): boolean { if (!isWalkable(tacticalWizardNavigationGrid, point) || this.members.some((member) => samePoint(member.position, point))) return false; this.player = point; return true; }
-  nudgePlayer(dx: number, dy: number): boolean { const moved = this.setPlayerPosition({ x: this.player.x + dx, y: this.player.y + dy }); if (moved) this.pendingNoiseIntensity = Math.max(this.pendingNoiseIntensity, 0.35); return moved; }
+  setPlayerPosition(point: GridPoint): boolean {
+    const candidate = roundWorldPoint(point);
+    if (!isWorldWalkable(candidate) || this.members.some((member) => distance(member.position, candidate) < 0.7)) return false;
+    this.player = candidate;
+    return true;
+  }
+  nudgePlayer(dx: number, dy: number): boolean {
+    const moved = this.setPlayerPosition({ x: this.player.x + dx * PLAYER_MOVE_STEP, y: this.player.y + dy * PLAYER_MOVE_STEP });
+    if (moved) this.pendingNoiseIntensity = Math.max(this.pendingNoiseIntensity, 0.35);
+    return moved;
+  }
 
   step(): TacticalWizardSimulationState {
     for (const member of this.members) { member.firePulse = Math.max(0, member.firePulse - 1); member.fireTarget = null; member.searchPulse = Math.max(0, member.searchPulse - 1); }
@@ -93,22 +109,43 @@ export class TacticalWizardSimulation {
       member.beliefConfidence = snapshot.belief.confidence; member.beliefSource = snapshot.belief.source; member.targetVisible = snapshot.belief.confirmedVisible;
       member.lastKnownPosition = snapshot.belief.estimatedPosition === null ? null : fromVector3(snapshot.belief.estimatedPosition);
     }
-    const occupied = new Set(this.members.map((member) => gridKey(member.position)));
-    for (const member of [...this.members].sort((left, right) => left.id.localeCompare(right.id, 'en'))) { occupied.delete(gridKey(member.position)); this.executeMember(member, occupied); occupied.add(gridKey(member.position)); }
-    if (!occupiedPositionsAreUnique(this.members.map((member) => member.position))) throw new Error('Simulation invariant violated: squad members overlap.');
+    const occupiedCells = new Set(this.members.map((member) => gridKey(toNavCell(member.position))));
+    for (const member of [...this.members].sort((left, right) => left.id.localeCompare(right.id, 'en'))) {
+      occupiedCells.delete(gridKey(toNavCell(member.position)));
+      this.executeMember(member, occupiedCells);
+      occupiedCells.add(gridKey(toNavCell(member.position)));
+    }
+    if (new Set(this.members.map((member) => gridKey(toNavCell(member.position)))).size !== this.members.length) throw new Error('Simulation invariant violated: squad members share a navigation cell.');
     this.advancePatrolIfReady(); this.advanceBoundingIfReady(); for (const member of this.members) member.wasVisible = visibility.get(member.id) === true;
     this.pendingNoiseIntensity = 0; this.logicalTick += 1; return this.getState();
   }
 
   getState(): TacticalWizardSimulationState {
     const primary = this.members[0]!;
-    const views = this.members.map((member): TacticalWizardAgentView => ({ id: member.id, label: member.label, position: member.position, facing: member.facing, path: member.path, selectedIntent: member.selectedIntent, beliefConfidence: member.beliefConfidence, beliefSource: member.beliefSource, targetVisible: member.targetVisible, lastKnownPosition: member.lastKnownPosition, role: member.role, coverTarget: member.coverSlot?.position ?? null, peekTarget: member.coverSlot?.peekPosition ?? null, firePulse: member.firePulse, fireTarget: member.fireTarget, searchPulse: member.searchPulse }));
-    return { logicalTick: this.logicalTick, agents: views, squad: { id: 'twr:rifle-squad-01', alertState: this.alertState, sourceAgentId: this.alertSourceId, sharedLastKnownPosition: this.sharedLastKnownPosition, phase: this.boundingPhase, suppressorId: this.suppressorId, moverId: this.moverId, observerId: this.observerId }, player: this.player, patrolPoints: tacticalWizardTestMap.patrolPoints, patrolIndex: this.patrolIndex, coverSlots: this.coverSlots, hearingRadius: this.hearingRadius, visionRange: this.visionRange, visionFovDegrees: this.visionFovDegrees, latestTraces: this.members.flatMap((member) => member.latestTrace === null ? [] : [member.latestTrace]), eventLog: [...this.eventLog], enemy: primary.position, enemyFacing: primary.facing, path: primary.path, selectedIntent: primary.selectedIntent, beliefConfidence: primary.beliefConfidence, beliefSource: primary.beliefSource, targetVisible: primary.targetVisible, lastKnownPosition: primary.lastKnownPosition, latestTrace: primary.latestTrace, latestSnapshot: primary.latestSnapshot, firePulse: primary.firePulse, searchPulse: primary.searchPulse };
+    const views = this.members.map((member): TacticalWizardAgentView => ({
+      id: member.id, label: member.label, position: member.position, facing: member.facing, path: member.path, selectedIntent: member.selectedIntent,
+      beliefConfidence: member.beliefConfidence, beliefSource: member.beliefSource, targetVisible: member.targetVisible, lastKnownPosition: member.lastKnownPosition,
+      role: member.role, coverTarget: member.coverSlot?.position ?? null, peekTarget: member.coverSlot?.peekPosition ?? null, firePulse: member.firePulse,
+      fireTarget: member.fireTarget, searchPulse: member.searchPulse, stalledTicks: member.stalledTicks,
+    }));
+    return {
+      logicalTick: this.logicalTick, agents: views,
+      squad: { id: 'twr:rifle-squad-01', alertState: this.alertState, sourceAgentId: this.alertSourceId, sharedLastKnownPosition: this.sharedLastKnownPosition, phase: this.boundingPhase, suppressorId: this.suppressorId, moverId: this.moverId, observerId: this.observerId },
+      player: this.player, patrolPoints: tacticalWizardTestMap.patrolPoints, patrolIndex: this.patrolIndex, coverSlots: this.coverSlots, hearingRadius: this.hearingRadius,
+      visionRange: this.visionRange, visionFovDegrees: this.visionFovDegrees, movementResolution: PLAYER_MOVE_STEP,
+      latestTraces: this.members.flatMap((member) => member.latestTrace === null ? [] : [member.latestTrace]), eventLog: [...this.eventLog],
+      enemy: primary.position, enemyFacing: primary.facing, path: primary.path, selectedIntent: primary.selectedIntent, beliefConfidence: primary.beliefConfidence,
+      beliefSource: primary.beliefSource, targetVisible: primary.targetVisible, lastKnownPosition: primary.lastKnownPosition, latestTrace: primary.latestTrace,
+      latestSnapshot: primary.latestSnapshot, firePulse: primary.firePulse, searchPulse: primary.searchPulse,
+    };
   }
 
   private updateSquadAlert(visibility: ReadonlyMap<string, boolean>): void {
     const reporter = [...this.members].filter((member) => visibility.get(member.id) === true).sort((left, right) => left.id.localeCompare(right.id, 'en'))[0];
-    if (reporter !== undefined) { this.sharedLastKnownPosition = { ...this.player }; this.alertSourceId = reporter.id; this.alertExpiresAt = this.logicalTick + ALERT_MEMORY_TICKS; if (this.alertState === 'idle') { this.alertState = 'pending'; this.pendingAlertUntil = this.logicalTick + ALERT_PROPAGATION_TICKS; this.pushEvent(`T${this.logicalTick}: ${reporter.label} confirmed contact; squad alert pending.`); } }
+    if (reporter !== undefined) {
+      this.sharedLastKnownPosition = { ...this.player }; this.alertSourceId = reporter.id; this.alertExpiresAt = this.logicalTick + ALERT_MEMORY_TICKS;
+      if (this.alertState === 'idle') { this.alertState = 'pending'; this.pendingAlertUntil = this.logicalTick + ALERT_PROPAGATION_TICKS; this.pushEvent(`T${this.logicalTick}: ${reporter.label} confirmed contact; squad alert pending.`); }
+    }
     if (this.alertState === 'pending' && this.logicalTick >= this.pendingAlertUntil) this.activateSquad();
     if (this.alertState === 'active' && reporter === undefined && this.logicalTick > this.alertExpiresAt) this.clearSquadAlert();
   }
@@ -120,32 +157,39 @@ export class TacticalWizardSimulation {
   }
   private clearSquadAlert(): void {
     this.alertState = 'idle'; this.alertSourceId = null; this.sharedLastKnownPosition = null; this.suppressorId = null; this.moverId = null; this.observerId = null; this.coverSlots = [];
-    for (const member of this.members) { member.role = 'patrol'; member.coverSlot = null; member.tacticalTarget = null; }
+    for (const member of this.members) { member.role = 'patrol'; member.coverSlot = null; member.tacticalTarget = null; member.stalledTicks = 0; }
     this.pushEvent(`T${this.logicalTick}: squad alert expired; formation returns to patrol.`);
   }
   private applyRoles(): void { for (const member of this.members) member.role = member.id === this.suppressorId ? 'suppressor' : member.id === this.moverId ? 'mover' : member.id === this.observerId ? 'observer' : 'patrol'; }
   private ensureTacticalPlan(): void {
     if (this.sharedLastKnownPosition === null) return;
-    const missingMover = this.moverId !== null && this.members.find((member) => member.id === this.moverId)?.coverSlot === null;
+    const mover = this.moverId === null ? undefined : this.members.find((member) => member.id === this.moverId);
+    const missingMover = this.moverId !== null && mover?.coverSlot === null;
     const missingObserver = this.observerId !== null && this.members.find((member) => member.id === this.observerId)?.coverSlot === null;
     const missingSuppressorTarget = this.suppressorId !== null && this.members.find((member) => member.id === this.suppressorId)?.tacticalTarget === null;
-    if (this.coverSlots.length === 0 || missingMover || missingObserver || missingSuppressorTarget) this.refreshCoverPlan();
+    if (this.coverSlots.length === 0 || missingMover || missingObserver || missingSuppressorTarget || (mover?.stalledTicks ?? 0) >= STALLED_REPLAN_TICKS) {
+      if ((mover?.stalledTicks ?? 0) >= STALLED_REPLAN_TICKS) this.pushEvent(`T${this.logicalTick}: ${mover?.label ?? 'Mover'} stalled; tactical cover plan recalculated.`);
+      this.refreshCoverPlan();
+    }
   }
   private refreshCoverPlan(): void {
     const threat = this.sharedLastKnownPosition; if (threat === null) return;
-    this.coverSlots = discoverCoverSlots(tacticalWizardNavigationGrid, threat); const reserved = new Set<string>();
+    const threatCell = toNavCell(threat);
+    this.coverSlots = discoverCoverSlots(tacticalWizardNavigationGrid, threatCell); const reserved = new Set<string>();
     const order = [this.moverId, this.observerId, this.suppressorId].filter((id): id is string => id !== null);
     for (const id of order) {
       const member = this.members.find((candidate) => candidate.id === id); if (member === undefined) continue;
-      const mode = member.role === 'mover' ? 'advance' : 'support'; const slot = selectCoverSlot(tacticalWizardNavigationGrid, this.coverSlots, member.position, threat, reserved, mode);
-      member.coverSlot = slot; if (slot !== null) reserved.add(slot.id);
-      if (member.role === 'suppressor') member.tacticalTarget = hasLineOfSight(tacticalWizardNavigationGrid, member.position, threat) ? { ...member.position } : slot?.peekPosition ?? { ...member.position };
+      const mode = member.role === 'mover' ? 'advance' : 'support';
+      const slot = selectCoverSlot(tacticalWizardNavigationGrid, this.coverSlots, toNavCell(member.position), threatCell, reserved, mode);
+      member.coverSlot = slot; member.stalledTicks = 0; if (slot !== null) reserved.add(slot.id);
+      if (member.role === 'suppressor') member.tacticalTarget = hasWorldLineOfSight(member.position, threat) ? { ...member.position } : slot?.peekPosition ?? { ...member.position };
       else member.tacticalTarget = slot?.position ?? null;
     }
   }
   private advanceBoundingIfReady(): void {
     if (this.alertState !== 'active' || this.moverId === null || this.suppressorId === null || this.logicalTick - this.phaseStartedTick < MIN_BOUNDING_PHASE_TICKS) return;
-    const mover = this.members.find((member) => member.id === this.moverId); if (mover?.coverSlot === null || mover?.coverSlot === undefined || !samePoint(mover.position, mover.coverSlot.position)) return;
+    const mover = this.members.find((member) => member.id === this.moverId);
+    if (mover?.coverSlot === null || mover?.coverSlot === undefined || !samePoint(mover.position, mover.coverSlot.position)) return;
     const previousSuppressor = this.suppressorId; this.suppressorId = this.moverId; this.moverId = previousSuppressor; this.boundingPhase += 1; this.phaseStartedTick = this.logicalTick;
     this.applyRoles(); this.refreshCoverPlan(); const suppressor = this.members.find((member) => member.id === this.suppressorId); const nextMover = this.members.find((member) => member.id === this.moverId);
     this.pushEvent(`T${this.logicalTick}: bounding phase ${this.boundingPhase}; ${suppressor?.label ?? 'member'} covers, ${nextMover?.label ?? 'member'} advances.`);
@@ -153,47 +197,96 @@ export class TacticalWizardSimulation {
 
   private buildStimuli(member: MutableMember, visible: boolean): readonly Stimulus[] {
     const stimuli: Stimulus[] = [];
-    if (visible) { stimuli.push({ id: `visual:player:${member.id}:${this.logicalTick}`, sequence: 20, logicalTick: this.logicalTick, kind: 'visual_actor', actorId: 'player', visible: true, position: toVector3(this.player), relation: 'hostile' }); if (!member.wasVisible) this.pushEvent(`T${this.logicalTick}: ${member.label} visual contact confirmed.`); }
-    else if (member.wasVisible) { stimuli.push({ id: `visual:player:${member.id}:${this.logicalTick}:lost`, sequence: 20, logicalTick: this.logicalTick, kind: 'visual_actor', actorId: 'player', visible: false, relation: 'hostile' }); this.pushEvent(`T${this.logicalTick}: ${member.label} lost visual; live player position withheld.`); }
-    if (this.pendingNoiseIntensity > 0 && distance(member.position, this.player) <= this.hearingRadius) { const perceived = this.noisyPerceivedPosition(member); stimuli.push({ id: `noise:player:${member.id}:${this.logicalTick}`, sequence: 10, logicalTick: this.logicalTick, kind: 'noise', sourceId: 'player', perceivedPosition: toVector3(perceived), intensity: this.pendingNoiseIntensity, actionKind: this.pendingNoiseIntensity >= 0.8 ? 'manual_test_noise' : 'footstep' }); }
-    if (this.alertState === 'active' && this.sharedLastKnownPosition !== null && member.id !== this.alertSourceId) stimuli.push({ id: `squad-report:${member.id}:${this.logicalTick}`, sequence: 15, logicalTick: this.logicalTick, kind: 'squad_report', sourceId: this.alertSourceId ?? 'squad', subjectId: 'player', reportedPosition: toVector3(this.sharedLastKnownPosition), confidence: 0.82 });
+    if (visible) {
+      stimuli.push({ id: `visual:player:${member.id}:${this.logicalTick}`, sequence: 20, logicalTick: this.logicalTick, kind: 'visual_actor', actorId: 'player', visible: true, position: toVector3(this.player), relation: 'hostile' });
+      if (!member.wasVisible) this.pushEvent(`T${this.logicalTick}: ${member.label} visual contact confirmed.`);
+    } else if (member.wasVisible) {
+      stimuli.push({ id: `visual:player:${member.id}:${this.logicalTick}:lost`, sequence: 20, logicalTick: this.logicalTick, kind: 'visual_actor', actorId: 'player', visible: false, relation: 'hostile' });
+      this.pushEvent(`T${this.logicalTick}: ${member.label} lost visual; live player position withheld.`);
+    }
+    if (this.pendingNoiseIntensity > 0 && distance(member.position, this.player) <= this.hearingRadius) {
+      const perceived = this.noisyPerceivedPosition(member);
+      stimuli.push({ id: `noise:player:${member.id}:${this.logicalTick}`, sequence: 10, logicalTick: this.logicalTick, kind: 'noise', sourceId: 'player', perceivedPosition: toVector3(perceived), intensity: this.pendingNoiseIntensity, actionKind: this.pendingNoiseIntensity >= 0.8 ? 'manual_test_noise' : 'footstep' });
+    }
+    if (this.alertState === 'active' && this.sharedLastKnownPosition !== null && member.id !== this.alertSourceId) {
+      stimuli.push({ id: `squad-report:${member.id}:${this.logicalTick}`, sequence: 15, logicalTick: this.logicalTick, kind: 'squad_report', sourceId: this.alertSourceId ?? 'squad', subjectId: 'player', reportedPosition: toVector3(this.sharedLastKnownPosition), confidence: 0.82 });
+    }
     return stimuli;
   }
-  private executeMember(member: MutableMember, occupied: Set<string>): void {
+  private executeMember(member: MutableMember, occupiedCells: Set<string>): void {
     if (this.alertState === 'active' && this.sharedLastKnownPosition !== null) {
-      if (member.role === 'mover') { if (member.coverSlot !== null) this.moveMemberToward(member, member.coverSlot.position, occupied); this.faceToward(member, this.sharedLastKnownPosition); return; }
-      if (member.role === 'observer') { if (member.coverSlot !== null) this.moveMemberToward(member, member.coverSlot.position, occupied); this.faceToward(member, this.sharedLastKnownPosition); if (member.targetVisible && this.logicalTick % 5 === 0) this.fireAt(member, this.player, 'observer support'); return; }
-      if (member.role === 'suppressor') { if (member.tacticalTarget !== null) this.moveMemberToward(member, member.tacticalTarget, occupied); this.faceToward(member, this.sharedLastKnownPosition); if (hasLineOfSight(tacticalWizardNavigationGrid, member.position, this.sharedLastKnownPosition) && this.logicalTick % 3 === 0) this.fireAt(member, this.sharedLastKnownPosition, 'suppressive fire'); return; }
+      if (member.role === 'mover') { if (member.coverSlot !== null) this.moveMemberToward(member, member.coverSlot.position, occupiedCells); this.faceToward(member, this.sharedLastKnownPosition); return; }
+      if (member.role === 'observer') { if (member.coverSlot !== null) this.moveMemberToward(member, member.coverSlot.position, occupiedCells); this.faceToward(member, this.sharedLastKnownPosition); if (member.targetVisible && this.logicalTick % 5 === 0) this.fireAt(member, this.player, 'observer support'); return; }
+      if (member.role === 'suppressor') { if (member.tacticalTarget !== null) this.moveMemberToward(member, member.tacticalTarget, occupiedCells); this.faceToward(member, this.sharedLastKnownPosition); if (hasWorldLineOfSight(member.position, this.sharedLastKnownPosition) && this.logicalTick % 3 === 0) this.fireAt(member, this.sharedLastKnownPosition, 'suppressive fire'); return; }
     }
-    if (member.selectedIntent === 'engage' && member.targetVisible) { this.faceToward(member, this.player); member.path = []; if (this.logicalTick % 2 === 0) this.fireAt(member, this.player, 'engage'); return; }
+    if (member.selectedIntent === 'engage' && member.targetVisible) { this.faceToward(member, this.player); member.path = []; member.stalledTicks = 0; if (this.logicalTick % 2 === 0) this.fireAt(member, this.player, 'engage'); return; }
     if (member.selectedIntent === 'search') member.searchPulse = 6;
     let target = member.latestSnapshot?.selectedIntent.targetPosition === undefined ? null : fromVector3(member.latestSnapshot.selectedIntent.targetPosition);
-    if (member.selectedIntent === 'patrol') target = this.getPatrolTarget(member); if (target === null) { member.path = []; return; } this.moveMemberToward(member, target, occupied);
+    if (member.selectedIntent === 'patrol') target = this.getPatrolTarget(member);
+    if (target === null) { member.path = []; member.stalledTicks = 0; return; }
+    this.moveMemberToward(member, target, occupiedCells);
   }
-  private moveMemberToward(member: MutableMember, target: GridPoint, occupied: ReadonlySet<string>): void {
-    const path = findPath(tacticalWizardNavigationGrid, member.position, target); member.path = path; if (path.length <= 1) return;
-    const next = path[1]!; if (occupied.has(gridKey(next)) || samePoint(next, this.player)) return; member.facing = { x: next.x - member.position.x, y: next.y - member.position.y }; member.position = next; member.path = path.slice(1);
+  private moveMemberToward(member: MutableMember, target: GridPoint, occupiedCells: ReadonlySet<string>): void {
+    if (samePoint(member.position, target)) { member.position = { ...target }; member.path = [target]; member.stalledTicks = 0; return; }
+    const startCell = toNavCell(member.position); const goalCell = toNavCell(target);
+    const transientBlocked = new Set(occupiedCells); transientBlocked.add(gridKey(toNavCell(this.player))); transientBlocked.delete(gridKey(startCell));
+    const path = findPath(tacticalWizardNavigationGrid, startCell, goalCell, transientBlocked);
+    member.path = path.length === 0 ? [] : [{ ...member.position }, ...path.slice(1)];
+    if (path.length === 0) { member.stalledTicks += 1; return; }
+    const waypoint = path.length === 1 ? target : path[1]!;
+    const candidate = moveToward(member.position, waypoint, AGENT_MOVE_STEP);
+    const candidateCell = toNavCell(candidate);
+    if (!isWorldWalkable(candidate) || occupiedCells.has(gridKey(candidateCell)) || distance(candidate, this.player) < 0.65) { member.stalledTicks += 1; return; }
+    const previous = member.position; member.position = roundWorldPoint(candidate);
+    const dx = member.position.x - previous.x; const dy = member.position.y - previous.y;
+    if (Math.abs(dx) > POSITION_EPSILON || Math.abs(dy) > POSITION_EPSILON) { member.facing = normalizeDirection({ x: dx, y: dy }); member.stalledTicks = 0; }
+    else member.stalledTicks += 1;
+    if (distance(member.position, target) <= AGENT_MOVE_STEP) member.position = { ...target };
   }
-  private advancePatrolIfReady(): void { if (this.alertState !== 'idle' || !this.members.every((member) => distance(member.position, this.getPatrolTarget(member)) <= 1)) return; this.patrolIndex = (this.patrolIndex + 1) % tacticalWizardTestMap.patrolPoints.length; this.pushEvent(`T${this.logicalTick}: squad patrol waypoint advanced to P${this.patrolIndex + 1}.`); }
+  private advancePatrolIfReady(): void {
+    if (this.alertState !== 'idle' || !this.members.every((member) => distance(member.position, this.getPatrolTarget(member)) <= AGENT_MOVE_STEP + POSITION_EPSILON)) return;
+    this.patrolIndex = (this.patrolIndex + 1) % tacticalWizardTestMap.patrolPoints.length; this.pushEvent(`T${this.logicalTick}: squad patrol waypoint advanced to P${this.patrolIndex + 1}.`);
+  }
   private getPatrolTarget(member: MutableMember): GridPoint {
-    const base = tacticalWizardTestMap.patrolPoints[this.patrolIndex]!; const candidates = [{ x: base.x + member.patrolOffset.x, y: base.y + member.patrolOffset.y }, { x: base.x + member.patrolOffset.x, y: base.y }, { x: base.x, y: base.y + member.patrolOffset.y }, base];
+    const base = tacticalWizardTestMap.patrolPoints[this.patrolIndex]!;
+    const candidates = [{ x: base.x + member.patrolOffset.x, y: base.y + member.patrolOffset.y }, { x: base.x + member.patrolOffset.x, y: base.y }, { x: base.x, y: base.y + member.patrolOffset.y }, base];
     return candidates.find((candidate) => isWalkable(tacticalWizardNavigationGrid, candidate)) ?? base;
   }
   private canSeePlayer(member: MutableMember): boolean {
-    const range = distance(member.position, this.player); if (range > this.visionRange || !hasLineOfSight(tacticalWizardNavigationGrid, member.position, this.player)) return false; if (range === 0) return true;
-    const direction = { x: (this.player.x - member.position.x) / range, y: (this.player.y - member.position.y) / range }; const facingLength = Math.hypot(member.facing.x, member.facing.y) || 1; const facing = { x: member.facing.x / facingLength, y: member.facing.y / facingLength };
+    const range = distance(member.position, this.player); if (range > this.visionRange || !hasWorldLineOfSight(member.position, this.player)) return false; if (range <= POSITION_EPSILON) return true;
+    const direction = { x: (this.player.x - member.position.x) / range, y: (this.player.y - member.position.y) / range };
+    const facingLength = Math.hypot(member.facing.x, member.facing.y) || 1; const facing = { x: member.facing.x / facingLength, y: member.facing.y / facingLength };
     const dot = Math.max(-1, Math.min(1, direction.x * facing.x + direction.y * facing.y)); return Math.acos(dot) * 180 / Math.PI <= this.visionFovDegrees / 2;
   }
-  private faceToward(member: MutableMember, point: GridPoint): void { const dx = Math.sign(point.x - member.position.x); const dy = Math.sign(point.y - member.position.y); if (dx !== 0 || dy !== 0) member.facing = { x: dx, y: dy }; }
-  private noisyPerceivedPosition(member: MutableMember): GridPoint { const memberIndex = this.members.findIndex((candidate) => candidate.id === member.id); const offsets = [{ x: 1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: 0 }, { x: 0, y: 1 }]; const offset = offsets[(this.logicalTick + Math.max(0, memberIndex)) % offsets.length]!; const candidate = { x: this.player.x + offset.x, y: this.player.y + offset.y }; return isWalkable(tacticalWizardNavigationGrid, candidate) ? candidate : this.player; }
+  private faceToward(member: MutableMember, point: GridPoint): void {
+    const dx = point.x - member.position.x; const dy = point.y - member.position.y; if (Math.abs(dx) > POSITION_EPSILON || Math.abs(dy) > POSITION_EPSILON) member.facing = normalizeDirection({ x: dx, y: dy });
+  }
+  private noisyPerceivedPosition(member: MutableMember): GridPoint {
+    const memberIndex = this.members.findIndex((candidate) => candidate.id === member.id); const offsets = [{ x: 1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: 0 }, { x: 0, y: 1 }];
+    const offset = offsets[(this.logicalTick + Math.max(0, memberIndex)) % offsets.length]!; const candidate = roundWorldPoint({ x: this.player.x + offset.x, y: this.player.y + offset.y });
+    return isWorldWalkable(candidate) ? candidate : this.player;
+  }
   private fireAt(member: MutableMember, target: GridPoint, reason: string): void { member.firePulse = 2; member.fireTarget = { ...target }; this.pushEvent(`T${this.logicalTick}: ${member.label} ${reason}.`); }
   private pushEvent(message: string): void { this.eventLog.unshift(message); this.eventLog.splice(18); }
 }
 
-function createMembers(): MutableMember[] { return MEMBER_DEFINITIONS.map((definition) => ({ id: definition.id, label: definition.label, patrolOffset: definition.patrolOffset, runtime: createTacticalWizardReferenceRuntime(definition.id), position: definition.start, facing: { x: 1, y: 0 }, path: [], selectedIntent: 'patrol', beliefConfidence: 0, beliefSource: 'none', targetVisible: false, lastKnownPosition: null, latestTrace: null, latestSnapshot: null, wasVisible: false, role: 'patrol', coverSlot: null, tacticalTarget: null, firePulse: 0, fireTarget: null, searchPulse: 0 })); }
+function createMembers(): MutableMember[] {
+  return MEMBER_DEFINITIONS.map((definition) => ({
+    id: definition.id, label: definition.label, patrolOffset: definition.patrolOffset, runtime: createTacticalWizardReferenceRuntime(definition.id),
+    position: definition.start, facing: { x: 1, y: 0 }, path: [], selectedIntent: 'patrol', beliefConfidence: 0, beliefSource: 'none', targetVisible: false,
+    lastKnownPosition: null, latestTrace: null, latestSnapshot: null, wasVisible: false, role: 'patrol', coverSlot: null, tacticalTarget: null,
+    firePulse: 0, fireTarget: null, searchPulse: 0, stalledTicks: 0,
+  }));
+}
 function rect(x: number, y: number, width: number, height: number): GridPoint[] { const points: GridPoint[] = []; for (let yy = y; yy < y + height; yy += 1) for (let xx = x; xx < x + width; xx += 1) points.push({ x: xx, y: yy }); return points; }
 function toVector3(point: GridPoint): Vector3 { return { x: point.x, y: 0, z: point.y }; }
-function fromVector3(point: Vector3): GridPoint { return { x: Math.round(point.x), y: Math.round(point.z) }; }
+function fromVector3(point: Vector3): GridPoint { return roundWorldPoint({ x: point.x, y: point.z }); }
 function distance(a: GridPoint, b: GridPoint): number { return Math.hypot(a.x - b.x, a.y - b.y); }
-function samePoint(left: GridPoint, right: GridPoint): boolean { return left.x === right.x && left.y === right.y; }
+function samePoint(left: GridPoint, right: GridPoint): boolean { return distance(left, right) <= POSITION_EPSILON; }
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
+function toNavCell(point: GridPoint): GridPoint { return { x: Math.max(0, Math.min(tacticalWizardTestMap.width - 1, Math.round(point.x))), y: Math.max(0, Math.min(tacticalWizardTestMap.height - 1, Math.round(point.y))) }; }
+function isWorldWalkable(point: GridPoint): boolean { return point.x >= 0 && point.y >= 0 && point.x <= tacticalWizardTestMap.width - 1 && point.y <= tacticalWizardTestMap.height - 1 && isWalkable(tacticalWizardNavigationGrid, toNavCell(point)); }
+function hasWorldLineOfSight(from: GridPoint, to: GridPoint): boolean { return hasLineOfSight(tacticalWizardNavigationGrid, toNavCell(from), toNavCell(to)); }
+function moveToward(from: GridPoint, to: GridPoint, maxDistance: number): GridPoint { const dx = to.x - from.x; const dy = to.y - from.y; const length = Math.hypot(dx, dy); if (length <= maxDistance || length === 0) return { ...to }; const scale = maxDistance / length; return { x: from.x + dx * scale, y: from.y + dy * scale }; }
+function normalizeDirection(direction: GridPoint): GridPoint { const length = Math.hypot(direction.x, direction.y) || 1; return { x: direction.x / length, y: direction.y / length }; }
+function roundWorldPoint(point: GridPoint): GridPoint { return { x: Math.round(point.x * SIMULATION_MOVEMENT_SUBDIVISIONS) / SIMULATION_MOVEMENT_SUBDIVISIONS, y: Math.round(point.y * SIMULATION_MOVEMENT_SUBDIVISIONS) / SIMULATION_MOVEMENT_SUBDIVISIONS }; }
