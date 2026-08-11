@@ -80,10 +80,18 @@ Scheduler / Request / Resource / Ownership、Squad/Director、GOAP、HTN、Behav
 
 Reference Slice 01 使用 npm workspaces + TypeScript；Workbench 使用 React + Vite，测试使用 Vitest。该技术栈是首个 **reference implementation**，不是未来 Unreal/C++、Unity 或 Godot 必须嵌入 TypeScript runtime 的产品约束。
 
+当前分支尚未提交 `package-lock.json`，因此使用已经由 CI 验证的安装命令：
+
 ```bash
-npm ci
+npm install
 npm run test
 npm run build
+```
+
+参考包可用以下命令在本地生成，不要求 TWR 提交机器绝对路径依赖：
+
+```bash
+npm run pack:reference
 ```
 
 详见：
