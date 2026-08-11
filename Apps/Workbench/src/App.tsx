@@ -2,7 +2,14 @@ import { useMemo, useState, type ChangeEvent } from 'react';
 import type { DecisionTrace } from '@volition/core';
 import { validateProjectConfig } from '@volition/schema';
 import { runTacticalWizardFixture } from '@volition/example-tactical-wizard';
-import { WorkbenchWebSocketConnection, type ConnectionState, validateLiveEndpoint } from './connection';
+import {
+  EMPTY_LIVE_TELEMETRY,
+  WorkbenchWebSocketConnection,
+  reduceLiveTelemetry,
+  type ConnectionState,
+  type LiveTelemetryState,
+  validateLiveEndpoint,
+} from './connection';
 
 const demo = runTacticalWizardFixture();
 const connection = new WorkbenchWebSocketConnection();
@@ -16,12 +23,21 @@ export function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
   const [connectionDetail, setConnectionDetail] = useState('Offline Demo active. No runtime connection is required.');
   const [liveMessages, setLiveMessages] = useState(0);
+  const [liveTelemetry, setLiveTelemetry] = useState<LiveTelemetryState>(EMPTY_LIVE_TELEMETRY);
 
-  const trace = useMemo(
+  const demoTrace = useMemo(
     () => demo.traces.find((entry) => entry.logicalTick === selectedTick) ?? demo.traces[0]!,
     [selectedTick],
   );
-  const snapshot = demo.snapshots.find((entry) => entry.logicalTick === trace.logicalTick) ?? demo.snapshots[0]!;
+  const demoSnapshot = demo.snapshots.find((entry) => entry.logicalTick === demoTrace.logicalTick) ?? demo.snapshots[0]!;
+  const usingLive = connectionState === 'connected'
+    && liveTelemetry.snapshot !== null
+    && liveTelemetry.latestTrace !== null;
+  const trace = usingLive ? liveTelemetry.latestTrace! : demoTrace;
+  const snapshot = usingLive ? liveTelemetry.snapshot! : demoSnapshot;
+  const agentIds = usingLive && liveTelemetry.agentIds.length > 0
+    ? liveTelemetry.agentIds
+    : [snapshot.agentId];
 
   const validateText = (text = configText) => {
     try {
@@ -41,6 +57,16 @@ export function App() {
     event.target.value = '';
   };
 
+  const exportConfig = () => {
+    const blob = new Blob([configText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'volition-project.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const connect = () => {
     const preview = validateLiveEndpoint(endpoint, window.location.protocol);
     if (!preview.valid) {
@@ -50,12 +76,23 @@ export function App() {
     }
     connection.connect(
       endpoint,
-      () => setLiveMessages((count) => count + 1),
+      (message) => {
+        setLiveMessages((count) => count + 1);
+        setLiveTelemetry((current) => reduceLiveTelemetry(current, message));
+      },
       (state, detail) => {
         setConnectionState(state);
         setConnectionDetail(detail);
+        if (state === 'offline') setLiveTelemetry(EMPTY_LIVE_TELEMETRY);
       },
     );
+  };
+
+  const disconnect = () => {
+    connection.disconnect();
+    setConnectionState('offline');
+    setConnectionDetail('Disconnected manually. Offline Demo remains available.');
+    setLiveTelemetry(EMPTY_LIVE_TELEMETRY);
   };
 
   return (
@@ -93,7 +130,7 @@ export function App() {
           <div className="connection-row">
             <input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} spellCheck={false} />
             <button onClick={connect}>Connect</button>
-            <button className="secondary" onClick={() => { connection.disconnect(); setConnectionState('offline'); setConnectionDetail('Disconnected manually. Offline Demo remains available.'); }}>Disconnect</button>
+            <button className="secondary" onClick={disconnect}>Disconnect</button>
           </div>
           <p className={`diagnostic ${connectionState}`}>{connectionDetail}</p>
           <small>HTTPS Pages rejects insecure ws:// mixed content. Local development may use ws://. Live messages received: {liveMessages}.</small>
@@ -102,11 +139,13 @@ export function App() {
 
       <section className="workspace">
         <aside className="panel agent-list">
-          <div className="panel-title">Agent List</div>
-          <button className="agent active">
-            <span className="dot" />
-            <span><strong>{snapshot.agentId}</strong><small>generic rifle enemy</small></span>
-          </button>
+          <div className="panel-title"><span>Agent List</span><span className="pill">{usingLive ? 'live' : 'fixture'}</span></div>
+          {agentIds.map((agentId) => (
+            <button key={agentId} className={`agent ${agentId === snapshot.agentId ? 'active' : ''}`}>
+              <span className="dot" />
+              <span><strong>{agentId}</strong><small>{usingLive ? 'live runtime' : 'generic rifle enemy'}</small></span>
+            </button>
+          ))}
           <div className="metric"><span>Logical tick</span><strong>{trace.logicalTick}</strong></div>
           <div className="metric"><span>Selected Intent</span><strong>{trace.selectedIntent.id}</strong></div>
           <div className="metric"><span>Belief confidence</span><strong>{trace.belief.confidence.toFixed(2)}</strong></div>
@@ -123,9 +162,15 @@ export function App() {
       </section>
 
       <section className="panel trace-panel">
-        <div className="panel-title"><span>Timeline / Decision Trace</span><span className="pill">why did this Agent do that?</span></div>
+        <div className="panel-title"><span>Timeline / Decision Trace</span><span className="pill">{usingLive ? 'live telemetry' : 'why did this Agent do that?'}</span></div>
         <div className="timeline">
-          {demo.traces.map((entry) => (
+          {usingLive ? (
+            <button className="active">
+              <span className="tick">LIVE T{trace.logicalTick}</span>
+              <strong>{trace.selectedIntent.id}</strong>
+              <small>{trace.belief.source} · {trace.belief.confidence.toFixed(2)}</small>
+            </button>
+          ) : demo.traces.map((entry) => (
             <button key={entry.logicalTick} className={entry.logicalTick === selectedTick ? 'active' : ''} onClick={() => setSelectedTick(entry.logicalTick)}>
               <span className="tick">T{entry.logicalTick}</span>
               <strong>{entry.selectedIntent.id}</strong>
@@ -146,6 +191,7 @@ export function App() {
         <div className="config-actions">
           <input type="file" accept="application/json,.json" onChange={openConfigFile} aria-label="Open portable Volition config" />
           <button onClick={() => validateText()}>Validate</button>
+          <button onClick={exportConfig}>Export JSON</button>
           <span>{validation.issues.length === 0 ? 'No validation issues.' : validation.issues.map((issue) => `${issue.severity}: ${issue.path} — ${issue.message}`).join(' · ')}</span>
         </div>
       </section>
