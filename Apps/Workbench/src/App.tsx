@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ChangeEvent } from 'react';
 import type { DecisionTrace } from '@volition/core';
 import { validateProjectConfig } from '@volition/schema';
 import { runTacticalWizardFixture } from '@volition/example-tactical-wizard';
@@ -10,6 +10,7 @@ const connection = new WorkbenchWebSocketConnection();
 export function App() {
   const [selectedTick, setSelectedTick] = useState(demo.traces[0]?.logicalTick ?? 0);
   const [configText, setConfigText] = useState(JSON.stringify(demo.config, null, 2));
+  const [configSource, setConfigSource] = useState('Bundled Tactical Wizard fixture');
   const [validation, setValidation] = useState(() => validateProjectConfig(demo.config));
   const [endpoint, setEndpoint] = useState('wss://localhost:7443/volition');
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
@@ -22,12 +23,22 @@ export function App() {
   );
   const snapshot = demo.snapshots.find((entry) => entry.logicalTick === trace.logicalTick) ?? demo.snapshots[0]!;
 
-  const validateText = () => {
+  const validateText = (text = configText) => {
     try {
-      setValidation(validateProjectConfig(JSON.parse(configText)));
+      setValidation(validateProjectConfig(JSON.parse(text)));
     } catch (error) {
       setValidation({ valid: false, issues: [{ severity: 'error', path: '$', message: error instanceof Error ? error.message : String(error) }] });
     }
+  };
+
+  const openConfigFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file === undefined) return;
+    const text = await file.text();
+    setConfigText(text);
+    setConfigSource(file.name);
+    validateText(text);
+    event.target.value = '';
   };
 
   const connect = () => {
@@ -130,8 +141,13 @@ export function App() {
 
       <section className="panel config-panel">
         <div className="panel-title"><span>Portable Config</span><span className={`pill ${validation.valid ? 'valid' : 'invalid'}`}>{validation.valid ? 'schema valid' : 'schema errors'}</span></div>
+        <p className="config-source">Source: {configSource}</p>
         <textarea value={configText} onChange={(event) => setConfigText(event.target.value)} spellCheck={false} />
-        <div className="config-actions"><button onClick={validateText}>Validate</button><span>{validation.issues.length === 0 ? 'No validation issues.' : validation.issues.map((issue) => `${issue.severity}: ${issue.path} — ${issue.message}`).join(' · ')}</span></div>
+        <div className="config-actions">
+          <input type="file" accept="application/json,.json" onChange={openConfigFile} aria-label="Open portable Volition config" />
+          <button onClick={() => validateText()}>Validate</button>
+          <span>{validation.issues.length === 0 ? 'No validation issues.' : validation.issues.map((issue) => `${issue.severity}: ${issue.path} — ${issue.message}`).join(' · ')}</span>
+        </div>
       </section>
 
       <footer>
