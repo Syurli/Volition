@@ -1,7 +1,7 @@
 # Volition Protocol
 
-定义 Volition Workbench 与各 Bridge 的实时通信语义。
+Protocol 0.1 定义 Workbench 真正需要的 transport-neutral 消息语义：handshake、capability negotiation、agent inventory、runtime snapshot、trace batch、validation result。
 
-首批范围：handshake、capabilities、project/instance identity、Agent inventory、snapshot、telemetry、config sync、validation result。
+Envelope 显式携带 `protocolVersion` 与稳定 `sequence`。WebSocket 只是 Web/Workbench 的首个 transport adapter，不进入协议消息语义。
 
-Protocol 与 WebSocket/IPC 等具体 transport 解耦，并必须显式版本化。
+Snapshot 表示当前状态；Trace batch 表示历史解释事件，两者不混用。Telemetry 可以禁用而不改变 Agent decision result。

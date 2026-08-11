@@ -3,22 +3,28 @@ task_id: VOLITION-TASK-UNCLAIMED-20260811-001
 title: 战术巫师首个参考应用与 GitHub Pages Workbench 垂直切片
 recommended_owner: codex
 eligible_owners: [codex]
-implementation_owner: unassigned
-claimed_by: ""
-claimed_at: ""
-status: queued
+implementation_owner: codex
+claimed_by: "codex"
+claimed_at: "2026-08-11T17:15:00+08:00"
+status: completed
 priority: high
 base_ref: main
 user_gate_required: true
 created_at: 2026-08-11
 updated_at: 2026-08-11
+completed_at: "2026-08-11T17:38:00+08:00"
 reference_application: Syurli/TWR_Dev
 reference_host: web
 ---
 
 # 战术巫师首个参考应用与 GitHub Pages Workbench 垂直切片
 
-> 状态：`todo` / 尚未认领  
+> 状态：`completed` / `codex`  
+> 实现分支：`codex/tactical-wizard-reference-slice-001`  
+> Draft PR：`Syurli/Volition#1`  
+> CI：TypeScript typecheck、5 个 test files / 15 tests、Workbench production build、reference package packing 均通过  
+> Pages：deployment workflow 已实现；截至 2026-08-11 仓库 Pages API 返回 404，仓库设置尚未启用，因此不声称已上线  
+> TWR 双仓联调：已产出 `npm run pack:reference`；AI-HOST-2 仍受 TWR 独立任务的用户批准 `I-Combat` Gate 约束，本任务未越权修改 TWR  
 > 产品：**能动 Volition — Agent Decision & Behavior Framework**  
 > 首个真实 Reference Application：`Syurli/TWR_Dev` / 《战术巫师：裂隙突围》  
 > 首个 Reference Host：Web  
