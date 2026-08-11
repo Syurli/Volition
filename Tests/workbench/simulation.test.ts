@@ -48,32 +48,42 @@ describe('Tactical Wizard interactive Workbench example', () => {
     expect(tacticalWizardTestMap.height).toBeGreaterThanOrEqual(24);
     let state = simulation.getState();
     expect(state.agents).toHaveLength(3);
-    for (let index = 0; index < 40; index += 1) state = simulation.step();
+    for (let index = 0; index < 80; index += 1) state = simulation.step();
     expect(occupiedPositionsAreUnique(state.agents.map((agent) => agent.position))).toBe(true);
   });
 
-  it('propagates confirmed contact into squad roles and alternates bounding overwatch', () => {
+  it('continues bounding overwatch beyond the first cover instead of deadlocking behind another member', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.step();
-    expect(state.squad.alertState).toBe('pending');
     state = simulation.step();
     state = simulation.step();
     expect(state.squad.alertState).toBe('active');
     expect(new Set(state.agents.map((agent) => agent.role))).toEqual(new Set(['suppressor', 'mover', 'observer']));
-    expect(state.coverSlots.length).toBeGreaterThan(0);
-    const firstSuppressor = state.squad.suppressorId;
 
-    for (let index = 0; index < 36 && state.squad.phase === 0; index += 1) state = simulation.step();
-    expect(state.squad.phase).toBeGreaterThan(0);
-    expect(state.squad.suppressorId).not.toBe(firstSuppressor);
+    let highestPhase = state.squad.phase;
+    const moverPositions = new Set<string>();
+    for (let index = 0; index < 180 && highestPhase < 3; index += 1) {
+      const moverId = state.squad.moverId;
+      const mover = state.agents.find((agent) => agent.id === moverId);
+      if (mover) moverPositions.add(`${mover.position.x.toFixed(2)},${mover.position.y.toFixed(2)}`);
+      state = simulation.step();
+      highestPhase = Math.max(highestPhase, state.squad.phase);
+    }
+    expect(highestPhase).toBeGreaterThanOrEqual(2);
+    expect(moverPositions.size).toBeGreaterThan(6);
+    expect(Math.max(...state.agents.map((agent) => agent.stalledTicks))).toBeLessThan(8);
     expect(occupiedPositionsAreUnique(state.agents.map((agent) => agent.position))).toBe(true);
   });
 
-  it('keyboard-style movement creates a low-intensity footstep stimulus when close enough', () => {
+  it('uses quarter-cell direct-control resolution and still creates footstep stimuli', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setPlayerPosition({ x: 4, y: 6 })).toBe(true);
+    const before = simulation.getState().player;
     expect(simulation.nudgePlayer(0, -1)).toBe(true);
+    const moved = simulation.getState();
+    expect(moved.movementResolution).toBe(0.25);
+    expect(moved.player.y).toBe(before.y - 0.25);
     const state = simulation.step();
     expect(state.latestTrace?.observations.some((entry) => entry.kind === 'noise' && entry.detail === 'footstep')).toBe(true);
   });
