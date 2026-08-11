@@ -1,8 +1,8 @@
 import type { MouseEvent } from 'react';
-import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
+import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
 import type { GridPoint } from '../simulation/navigation';
 
-const CELL = 32;
+const CELL = 22;
 
 interface Props {
   readonly state: TacticalWizardSimulationState;
@@ -13,13 +13,7 @@ interface Props {
 export function SimulationCanvas({ state, overlays, onSetPlayer }: Props) {
   const width = tacticalWizardTestMap.width * CELL;
   const height = tacticalWizardTestMap.height * CELL;
-  const enemy = center(state.enemy);
   const player = center(state.player);
-  const facingAngle = Math.atan2(state.enemyFacing.y, state.enemyFacing.x);
-  const half = state.visionFovDegrees * Math.PI / 360;
-  const visionRadius = state.visionRange * CELL;
-  const coneA = { x: enemy.x + Math.cos(facingAngle - half) * visionRadius, y: enemy.y + Math.sin(facingAngle - half) * visionRadius };
-  const coneB = { x: enemy.x + Math.cos(facingAngle + half) * visionRadius, y: enemy.y + Math.sin(facingAngle + half) * visionRadius };
 
   const handleClick = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -29,27 +23,48 @@ export function SimulationCanvas({ state, overlays, onSetPlayer }: Props) {
   };
 
   return (
-    <svg className="simulation-canvas" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tactical Wizard 2D AI simulation test map" onClick={handleClick}>
+    <svg className="simulation-canvas" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tactical Wizard squad AI simulation test map" onClick={handleClick}>
       <rect className="sim-floor" width={width} height={height} />
-      {overlays.grid && Array.from({ length: tacticalWizardTestMap.width + 1 }, (_, x) => (
-        <line key={`gx-${x}`} className="sim-grid-line" x1={x * CELL} y1={0} x2={x * CELL} y2={height} />
-      ))}
-      {overlays.grid && Array.from({ length: tacticalWizardTestMap.height + 1 }, (_, y) => (
-        <line key={`gy-${y}`} className="sim-grid-line" x1={0} y1={y * CELL} x2={width} y2={y * CELL} />
-      ))}
-      {overlays.hearing && <circle className="sim-hearing" cx={enemy.x} cy={enemy.y} r={state.hearingRadius * CELL} />}
-      {overlays.vision && <path className="sim-vision" d={`M ${enemy.x} ${enemy.y} L ${coneA.x} ${coneA.y} A ${visionRadius} ${visionRadius} 0 0 1 ${coneB.x} ${coneB.y} Z`} />}
-      {tacticalWizardTestMap.blocked.map((cell) => <rect key={`b-${cell.x}-${cell.y}`} className="sim-obstacle" x={cell.x * CELL + 1} y={cell.y * CELL + 1} width={CELL - 2} height={CELL - 2} rx={4} />)}
-      {state.patrolPoints.map((point, index) => { const p = center(point); return <g key={`patrol-${index}`} className={index === state.patrolIndex ? 'sim-patrol active' : 'sim-patrol'}><rect x={p.x - 7} y={p.y - 7} width={14} height={14} transform={`rotate(45 ${p.x} ${p.y})`} /><text x={p.x + 10} y={p.y - 9}>P{index + 1}</text></g>; })}
-      {overlays.path && state.path.length > 0 && <polyline className="sim-path" points={state.path.map((point) => `${center(point).x},${center(point).y}`).join(' ')} />}
-      {overlays.memory && state.lastKnownPosition && (() => { const p = center(state.lastKnownPosition); return <g className="sim-memory"><line x1={p.x - 9} y1={p.y - 9} x2={p.x + 9} y2={p.y + 9} /><line x1={p.x + 9} y1={p.y - 9} x2={p.x - 9} y2={p.y + 9} /><text x={p.x + 12} y={p.y + 4}>LKP</text></g>; })()}
-      {state.targetVisible && <line className="sim-los" x1={enemy.x} y1={enemy.y} x2={player.x} y2={player.y} />}
-      {state.firePulse > 0 && <line className="sim-fire" x1={enemy.x} y1={enemy.y} x2={player.x} y2={player.y} />}
-      {state.searchPulse > 0 && <circle className="sim-search" cx={enemy.x} cy={enemy.y} r={22 + state.searchPulse * 5} />}
-      <g className="sim-enemy" transform={`translate(${enemy.x} ${enemy.y}) rotate(${facingAngle * 180 / Math.PI + 90})`}><polygon points="0,-13 10,11 0,7 -10,11" /></g>
-      <text className="sim-label" x={enemy.x + 14} y={enemy.y - 14}>AI · {state.selectedIntent}</text>
-      <circle className="sim-player" cx={player.x} cy={player.y} r={11} /><circle className="sim-player-core" cx={player.x} cy={player.y} r={3} /><text className="sim-label player-label" x={player.x + 14} y={player.y - 14}>Player</text>
+      {overlays.grid && Array.from({ length: tacticalWizardTestMap.width + 1 }, (_, x) => <line key={`gx-${x}`} className="sim-grid-line" x1={x * CELL} y1={0} x2={x * CELL} y2={height} />)}
+      {overlays.grid && Array.from({ length: tacticalWizardTestMap.height + 1 }, (_, y) => <line key={`gy-${y}`} className="sim-grid-line" x1={0} y1={y * CELL} x2={width} y2={y * CELL} />)}
+      {state.agents.map((agent) => overlays.hearing ? <circle key={`hearing-${agent.id}`} className="sim-hearing" cx={center(agent.position).x} cy={center(agent.position).y} r={state.hearingRadius * CELL} /> : null)}
+      {state.agents.map((agent) => overlays.vision ? <path key={`vision-${agent.id}`} className="sim-vision" d={visionCone(agent, state.visionRange, state.visionFovDegrees)} /> : null)}
+      {tacticalWizardTestMap.blocked.map((cell) => <rect key={`b-${cell.x}-${cell.y}`} className="sim-obstacle" x={cell.x * CELL + 1} y={cell.y * CELL + 1} width={CELL - 2} height={CELL - 2} rx={3} />)}
+      {state.patrolPoints.map((point, index) => { const p = center(point); return <g key={`patrol-${index}`} className={index === state.patrolIndex ? 'sim-patrol active' : 'sim-patrol'}><rect x={p.x - 5} y={p.y - 5} width={10} height={10} transform={`rotate(45 ${p.x} ${p.y})`} /><text x={p.x + 8} y={p.y - 7}>P{index + 1}</text></g>; })}
+      {overlays.cover && state.coverSlots.map((slot) => { const p = center(slot.position); const peek = center(slot.peekPosition); return <g key={slot.id} className="sim-cover-slot"><circle cx={p.x} cy={p.y} r={3.5} /><line x1={p.x} y1={p.y} x2={peek.x} y2={peek.y} /></g>; })}
+      {state.agents.map((agent) => overlays.path && agent.path.length > 0 ? <polyline key={`path-${agent.id}`} className={`sim-path role-${agent.role}`} points={agent.path.map((point) => `${center(point).x},${center(point).y}`).join(' ')} /> : null)}
+      {overlays.memory && state.squad.sharedLastKnownPosition && (() => { const p = center(state.squad.sharedLastKnownPosition); return <g className="sim-memory squad-memory"><line x1={p.x - 8} y1={p.y - 8} x2={p.x + 8} y2={p.y + 8} /><line x1={p.x + 8} y1={p.y - 8} x2={p.x - 8} y2={p.y + 8} /><text x={p.x + 10} y={p.y + 4}>SQUAD LKP</text></g>; })()}
+      {state.agents.map((agent) => overlays.cover && agent.coverTarget ? <CoverAssignment key={`cover-target-${agent.id}`} agent={agent} /> : null)}
+      {state.agents.map((agent) => agent.targetVisible ? <line key={`los-${agent.id}`} className="sim-los" x1={center(agent.position).x} y1={center(agent.position).y} x2={player.x} y2={player.y} /> : null)}
+      {state.agents.map((agent) => agent.firePulse > 0 && agent.fireTarget ? <line key={`fire-${agent.id}`} className="sim-fire" x1={center(agent.position).x} y1={center(agent.position).y} x2={center(agent.fireTarget).x} y2={center(agent.fireTarget).y} /> : null)}
+      {state.agents.map((agent) => agent.searchPulse > 0 ? <circle key={`search-${agent.id}`} className="sim-search" cx={center(agent.position).x} cy={center(agent.position).y} r={16 + agent.searchPulse * 3} /> : null)}
+      {state.agents.map((agent) => <AgentShape key={agent.id} agent={agent} />)}
+      <circle className="sim-player" cx={player.x} cy={player.y} r={9} /><circle className="sim-player-core" cx={player.x} cy={player.y} r={2.5} /><text className="sim-label player-label" x={player.x + 12} y={player.y - 12}>Player</text>
+      <text className="sim-squad-banner" x={12} y={20}>Squad: {state.squad.alertState} · phase {state.squad.phase}</text>
     </svg>
   );
+}
+
+function AgentShape({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  const position = center(agent.position);
+  const angle = Math.atan2(agent.facing.y, agent.facing.x) * 180 / Math.PI + 90;
+  return <g className={`sim-enemy role-${agent.role}`} transform={`translate(${position.x} ${position.y})`}><g transform={`rotate(${angle})`}><polygon points="0,-10 8,9 0,6 -8,9" /></g><text className="sim-label" x={11} y={-10}>{agent.label} · {agent.role} · {agent.selectedIntent}</text></g>;
+}
+
+function CoverAssignment({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  if (agent.coverTarget === null) return null;
+  const target = center(agent.coverTarget);
+  const agentPoint = center(agent.position);
+  return <g className={`sim-cover-assignment role-${agent.role}`}><line x1={agentPoint.x} y1={agentPoint.y} x2={target.x} y2={target.y} /><circle cx={target.x} cy={target.y} r={7} /><text x={target.x + 9} y={target.y + 3}>{agent.label}</text></g>;
+}
+
+function visionCone(agent: TacticalWizardAgentView, range: number, fovDegrees: number): string {
+  const origin = center(agent.position);
+  const facingAngle = Math.atan2(agent.facing.y, agent.facing.x);
+  const half = fovDegrees * Math.PI / 360;
+  const radius = range * CELL;
+  const a = { x: origin.x + Math.cos(facingAngle - half) * radius, y: origin.y + Math.sin(facingAngle - half) * radius };
+  const b = { x: origin.x + Math.cos(facingAngle + half) * radius, y: origin.y + Math.sin(facingAngle + half) * radius };
+  return `M ${origin.x} ${origin.y} L ${a.x} ${a.y} A ${radius} ${radius} 0 0 1 ${b.x} ${b.y} Z`;
 }
 function center(point: GridPoint) { return { x: point.x * CELL + CELL / 2, y: point.y * CELL + CELL / 2 }; }
