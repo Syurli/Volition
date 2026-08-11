@@ -1,7 +1,9 @@
 # Volition Core
 
-引擎无关的 Agent 产品语义与可移植逻辑边界。
+引擎无关的 Agent 产品语义与首个 portable reference runtime。
 
-候选概念：Agent、Context、Decision、Intent、Behavior reference、Request、Resource、Ownership、Scheduler。
+Reference Slice 01 只实现：Agent lifecycle、TickContext、Context、Stimulus → Observation、Memory/Belief、DecisionCandidate/DecisionResult、Intent、Action/ActionResult、DecisionTrace。
 
-当前阶段不锁死实现语言。任何实现都不能依赖 Unreal、Unity、Godot 专属类型。
+`DecisionPolicy` 是可替换接口；`UtilityDecisionPolicy` 只是首个参考策略工具，不把 Volition 永久定义为 Utility AI。
+
+Core 不依赖 React、WebSocket、Tactical Wizard、Babylon.js、Jolt、Vlox 或任何游戏引擎 SDK。TypeScript 是首个 reference implementation，不是跨引擎产品语义。

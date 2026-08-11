@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
+    "baseUrl": ".",
+    "paths": {
+      "@volition/core": ["Packages/Core/src/index.ts"],
+      "@volition/schema": ["Packages/Schema/src/index.ts"],
+      "@volition/protocol": ["Packages/Protocol/src/index.ts"],
+      "@volition/web-bridge": ["Bridges/Web/src/index.ts"],
+      "@volition/example-tactical-wizard": ["Examples/TacticalWizard/src/index.ts"]
+    }
+  },
+  "include": [
+    "Packages/**/*.ts",
+    "Bridges/Web/**/*.ts",
+    "Examples/**/*.ts",
+    "Apps/Workbench/src/**/*.ts",
+    "Apps/Workbench/src/**/*.tsx",
+    "Tests/**/*.ts"
+  ]
+}
