@@ -23,12 +23,13 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [traceHistory, setTraceHistory] = useState<readonly DecisionTrace[]>([]);
-  const [overlays, setOverlays] = useState<SimulationOverlaySettings>({ vision: true, hearing: false, path: true, memory: true, grid: true });
+  const [overlays, setOverlays] = useState<SimulationOverlaySettings>({ vision: true, hearing: false, path: true, memory: true, grid: true, cover: true });
   const [endpoint, setEndpoint] = useState('wss://localhost:7443/volition');
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
   const [connectionDetail, setConnectionDetail] = useState('Offline Simulation active.');
   const [liveMessages, setLiveMessages] = useState(0);
   const [liveTelemetry, setLiveTelemetry] = useState<LiveTelemetryState>(EMPTY_LIVE_TELEMETRY);
+  const heldDirections = useRef<string[]>([]);
 
   const step = () => {
     const next = simulationRef.current.step();
@@ -44,14 +45,41 @@ export function App() {
   }, [playing, speed]);
 
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (page !== 'simulation' || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      const key = event.key.toLowerCase();
-      const move = key === 'w' || event.key === 'ArrowUp' ? [0,-1] : key === 's' || event.key === 'ArrowDown' ? [0,1] : key === 'a' || event.key === 'ArrowLeft' ? [-1,0] : key === 'd' || event.key === 'ArrowRight' ? [1,0] : null;
-      if (move) { event.preventDefault(); simulationRef.current.nudgePlayer(move[0]!, move[1]!); setSimulation(simulationRef.current.getState()); }
-      if (event.code === 'Space') { event.preventDefault(); simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }
+    const keyDown = (event: KeyboardEvent) => {
+      if (page !== 'simulation' || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
+      const direction = normalizeDirectionKey(event.key);
+      if (direction !== null) {
+        event.preventDefault();
+        heldDirections.current = [...heldDirections.current.filter((key) => key !== direction), direction];
+      }
+      if (event.code === 'Space' && !event.repeat) {
+        event.preventDefault();
+        simulationRef.current.emitNoise();
+        setSimulation(simulationRef.current.getState());
+      }
     };
-    window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler);
+    const keyUp = (event: KeyboardEvent) => {
+      const direction = normalizeDirectionKey(event.key);
+      if (direction !== null) heldDirections.current = heldDirections.current.filter((key) => key !== direction);
+    };
+    const blur = () => { heldDirections.current = []; };
+    const movementTimer = window.setInterval(() => {
+      if (page !== 'simulation') return;
+      const direction = heldDirections.current.at(-1);
+      if (direction === undefined) return;
+      const [dx, dy] = directionDelta(direction);
+      if (simulationRef.current.nudgePlayer(dx, dy)) setSimulation(simulationRef.current.getState());
+    }, 85);
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.clearInterval(movementTimer);
+      heldDirections.current = [];
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+      window.removeEventListener('blur', blur);
+    };
   }, [page]);
 
   const selectProject = (next: WorkbenchProject) => { setProject(next); setConfig(structuredClone(next.config)); reset(); setPage('overview'); };
@@ -78,5 +106,7 @@ export function App() {
 
 function Nav({ id, current, setPage, icon, label }: { readonly id: PageId; readonly current: PageId; readonly setPage: (id: PageId) => void; readonly icon: string; readonly label: string }) { return <button className={current === id ? 'nav-item active' : 'nav-item'} onClick={() => setPage(id)}><span>{icon}</span><span>{label}</span></button>; }
 function pageLabel(page: PageId): MessageKey { return page === 'projects' ? 'projectHub' : page; }
-function appendTrace(history: readonly DecisionTrace[], trace: DecisionTrace): readonly DecisionTrace[] { return [...history.filter((entry) => entry.logicalTick !== trace.logicalTick), trace].slice(-240); }
+function appendTrace(history: readonly DecisionTrace[], trace: DecisionTrace): readonly DecisionTrace[] { return [...history.filter((entry) => entry.agentId !== trace.agentId || entry.logicalTick !== trace.logicalTick), trace].slice(-240); }
 function loadLocale(): Locale { if (typeof window !== 'undefined') { const saved = window.localStorage.getItem('volition.workbench.locale'); if (saved === 'zh-CN' || saved === 'en-US') return saved; } return detectLocale(); }
+function normalizeDirectionKey(key: string): string | null { const normalized = key.toLowerCase(); if (normalized === 'w' || key === 'ArrowUp') return 'up'; if (normalized === 's' || key === 'ArrowDown') return 'down'; if (normalized === 'a' || key === 'ArrowLeft') return 'left'; if (normalized === 'd' || key === 'ArrowRight') return 'right'; return null; }
+function directionDelta(direction: string): readonly [number, number] { switch (direction) { case 'up': return [0,-1]; case 'down': return [0,1]; case 'left': return [-1,0]; case 'right': return [1,0]; default: return [0,0]; } }

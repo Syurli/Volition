@@ -35,7 +35,7 @@ export const tacticalWizardProjectConfig: VolitionProjectConfig = {
       decayPerSecond: 0.22,
       forgetBelowConfidence: 0.15,
     },
-    contextTypes: ['self', 'weapon_capability', 'patrol_route'],
+    contextTypes: ['self', 'weapon_capability', 'patrol_route', 'squad_role', 'engagement_position'],
     stimulusTypes: ['visual_actor', 'noise', 'damage_received', 'ally_report', 'squad_report'],
     capabilities: ['move_to', 'aim_at', 'fire', 'reload'],
     behaviors: {
@@ -63,10 +63,11 @@ export interface TacticalWizardFixtureRun {
   readonly selectedIntents: readonly string[];
 }
 
-export function createTacticalWizardReferenceRuntime(): AgentRuntime {
+/** Creates one runtime instance from the shared rifle-agent archetype. */
+export function createTacticalWizardReferenceRuntime(agentId: string = TACTICAL_WIZARD_AGENT_ID): AgentRuntime {
   const definition = tacticalWizardProjectConfig.agents[0]!;
   return new AgentRuntime({
-    agentId: definition.id,
+    agentId,
     policy: new UtilityDecisionPolicy(definition.decisionPolicy.id, makeCandidates),
     actionPlanner,
     memoryDecayPerSecond: definition.memory.decayPerSecond,
@@ -221,13 +222,16 @@ const actionPlanner: ActionPlanner = (input) => {
       return input.selectedIntent.targetPosition === undefined
         ? [{ kind: 'idle', intentId: input.selectedIntent.id }]
         : [{ kind: 'move_to', targetPosition: input.selectedIntent.targetPosition, intentId: input.selectedIntent.id }];
-    case 'engage':
-      return input.selectedIntent.targetId === undefined
-        ? [{ kind: 'idle', intentId: 'engage' }]
-        : [
-            { kind: 'aim_at', targetId: input.selectedIntent.targetId, intentId: 'engage' },
-            { kind: 'fire', targetId: input.selectedIntent.targetId, intentId: 'engage' },
-          ];
+    case 'engage': {
+      const engagementPosition = asVector3(input.context.values.engagementPosition);
+      const actions: Omit<import('@volition/core').ActionIntent, 'id'>[] = [];
+      if (engagementPosition !== null) actions.push({ kind: 'move_to', targetPosition: engagementPosition, intentId: 'engage' });
+      if (input.selectedIntent.targetId !== undefined) {
+        actions.push({ kind: 'aim_at', targetId: input.selectedIntent.targetId, intentId: 'engage' });
+        actions.push({ kind: 'fire', targetId: input.selectedIntent.targetId, intentId: 'engage' });
+      }
+      return actions.length === 0 ? [{ kind: 'idle', intentId: 'engage' }] : actions;
+    }
     case 'reload':
       return [{ kind: 'reload', intentId: 'reload' }];
     default:

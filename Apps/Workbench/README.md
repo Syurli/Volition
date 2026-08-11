@@ -2,7 +2,7 @@
 
 `Apps/Workbench` 是 **能动 Volition** 的正式浏览器编辑器，也是 GitHub Pages 部署站点本体。
 
-当前产品定位已经从单一 Runtime Inspector 升级为项目化 AI 工作台：
+## 当前编辑器能力
 
 - Project Hub：内置示例、本地项目、导入/导出；
 - Design：Agent 配置表单与 JSON 双视图；
@@ -14,11 +14,40 @@
 
 ## Tactical Wizard Built-in Example
 
-《战术巫师：裂隙突围》普通持枪敌人现在是 Workbench 的第一个 **Built-in Example Project**。离线 Pages 中可以直接运行 `Patrol → Investigate → Engage → Search → Patrol`。
+《战术巫师：裂隙突围》现在以三人普通步枪小队作为首个 Built-in Example。离线 Pages 可以直接验证：
 
-Simulation Host 提供 24×16 测试地图、静态障碍、deterministic grid A*、LOS、vision FOV、hearing radius、Player 测试体，以及 Agent/path/LKP/vision/hearing/fire/search 的 2D debug drawing。
+```text
+Formation Patrol
+  ↓ hearing / visual confirmation
+Individual Investigate + Shared Alert
+  ↓
+Squad roles: Suppressor / Mover / Observer
+  ↓
+Dynamic cover selection + unique occupancy
+  ↓
+Bounding overwatch / role swap
+  ↓ target loss
+Shared Last Known Position + individual Search / memory decay
+  ↓
+Formation Patrol
+```
 
-导航、地图、LOS、移动与表现属于 **Workbench Simulation Host**，不进入 Portable Core。
+Simulation Host 提供 **48×30** 测试地图、静态障碍、deterministic grid A*、LOS、vision FOV、hearing、动态 cover-slot 查询、掩体占用、交替掩护，以及 2D debug drawing。
+
+玩家测试体支持：
+
+- 按住 `WASD` / 方向键持续移动；
+- 移动产生低强度 footstep stimulus；
+- `Space` 制造高强度测试噪声；
+- 点击地图仍可用于快速传送测试位置。
+
+## Host Boundary
+
+地图、A*、LOS、动态掩体查询、占位与具体 movement/fire 表现属于 **Workbench Simulation Host**。Portable Core 仍负责 Agent 的 Observation → Memory/Belief → Decision → Intent 语义。
+
+小队成员只能通过自身真实 Observation 或 `squad_report` 获取共享 Last Known Position。没有任何成员能看到玩家时，Simulation Host 不会把隐藏玩家的实时位置泄漏给认知层。
+
+生产 Host 可以用 Unreal EQS/NavMesh、Unity/Godot 导航或自有系统替换 Workbench 的 cover/grid reference implementation，而不改变 Volition 的高层决策语义。
 
 ## Local Projects
 
