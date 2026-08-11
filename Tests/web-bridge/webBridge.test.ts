@@ -7,6 +7,7 @@ import {
   createTacticalWizardReferenceRuntime,
   fixtureContext,
   fixtureStimuli,
+  tacticalWizardProjectConfig,
 } from '@volition/example-tactical-wizard';
 
 class MemoryTransport implements ProtocolTransport {
@@ -30,6 +31,16 @@ const host: WebHostAdapter = {
 };
 
 describe('generic Web Bridge', () => {
+  it('loads versioned portable config while runtime construction remains injected', async () => {
+    const bridge = new VolitionWebBridge(host, { telemetryEnabled: false });
+    const loaded = bridge.loadProjectConfig(tacticalWizardProjectConfig, (definition) => {
+      expect(definition.id).toBe(TACTICAL_WIZARD_AGENT_ID);
+      return createTacticalWizardReferenceRuntime();
+    });
+    expect(loaded).toEqual([TACTICAL_WIZARD_AGENT_ID]);
+    await bridge.tick({ logicalTick: 0, deltaSeconds: 0, seed: 42 });
+  });
+
   it('announces protocol identity/inventory and emits runtime snapshots without host-specific types', async () => {
     const transport = new MemoryTransport();
     const runtime = createTacticalWizardReferenceRuntime();
