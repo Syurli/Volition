@@ -7,124 +7,123 @@
 - 产品名：**能动 Volition**
 - 定位：**Agent Decision & Behavior Framework**
 - 厂牌：**A BAIGE Project**
-- 当前阶段：**2.0 architecture reset / pre-alpha**
+- 当前阶段：**platform reset / pre-alpha**
 
-Volition 是新项目。除非任务明确要求，否则**不要迁移、复制、兼容或复刻 UDMBF 1.0 的 API、类名、文件布局和历史实现**。
+Volition 是新项目。除非任务明确要求，否则不要迁移、复制、兼容或复刻 UDMBF 1.0 的 API、类名、文件布局和历史实现。
 
-## 2. Primary Goal
+## 2. Repository Is Not An Engine Plugin
 
-优先建立清晰、可组合、可调试的游戏 Agent 运行模型，而不是追求短期功能数量。
+仓库根目录代表完整 Volition 平台，而不是 Unreal、Unity、Godot 中任意一个插件。
 
-核心闭环：
-
-```text
-Context → Decision → Intent → Behavior → Execution → Context
-```
-
-核心理念：**Agency over scripting.**
-
-## 3. Architecture Boundaries
-
-依赖方向必须保持：
+顶层职责：
 
 ```text
-VolitionEditor → VolitionRuntime → VolitionCore
+Apps/Workbench   -> 浏览器端主要编辑、调试、可视化体验
+Packages/Core    -> 引擎无关核心语义/可移植逻辑
+Packages/Schema  -> 跨引擎可复用配置与资产契约
+Packages/Protocol-> Workbench 与 Bridge 通信契约
+Bridges/*        -> 宿主引擎/运行环境适配
 ```
 
-禁止反向依赖。
+禁止把某个引擎的 Source、插件描述文件或编辑器模块重新放回仓库根目录。
 
-### VolitionCore
+## 3. Browser-first Tooling
 
-- 只放稳定的公共契约、基础类型、句柄、ID、事件和低层数据结构。
-- 可以依赖 Unreal 的 Core 基础设施，但尽量保持低依赖。
-- **不得依赖 StateTree、AIModule、UnrealEd 或具体行为系统。**
+完整的 Agent 编辑器、Debugger、Timeline、Resource/Request Inspector、Decision 可视化等功能应优先实现于 `Apps/Workbench`。
 
-### VolitionRuntime
+引擎内 UI 仅允许承担轻量集成功能，例如：
 
-- Agent 生命周期
-- Context
-- Decision / Intent
-- Behavior 执行协调
-- Resource / Request / Ownership
-- Scheduler / Priority / Arbitration
-- 与 Unreal 运行时系统的适配
+- 项目设置；
+- 连接状态；
+- 导入/导出或同步；
+- 打开/启动 Workbench；
+- 宿主引擎必须提供的选择器或绑定界面。
 
-### VolitionEditor
+不要在多个引擎插件里重复实现一套完整 Volition 编辑器。
 
-- 调试器
-- 可视化
-- 编辑器资产和验证工具
-- 开发者体验
+## 4. Engine Bridge Policy
 
-任何只为编辑器存在的依赖都不得泄漏到 Runtime 或 Core。
+`Bridges/Unreal`、`Bridges/Unity`、`Bridges/Godot`、`Bridges/Web` 只处理宿主特有问题：
 
-## 4. StateTree Policy
+- Host object / Agent identity mapping；
+- Context 采集；
+- Behavior execution adapter；
+- 配置加载与宿主资源引用；
+- Telemetry / command transport；
+- 生命周期、线程、序列化等宿主边界。
 
-StateTree 可以作为 Unreal 侧的重要执行后端或集成对象，但 **Volition ≠ StateTree Framework**。
+Bridge 不应重新定义 Core 概念。Engine-specific 数据只允许进入共享 Schema 的明确 extension 区域，不能污染通用字段。
 
-新增设计时：
+不同 Bridge 不得互相依赖。
 
-1. 先定义 Volition 自己的产品概念和接口；
-2. 再决定是否需要 StateTree Adapter / Integration；
-3. 不允许让 Core 的数据模型直接以 StateTree 类型作为唯一表达。
+## 5. Portable Layer Rules
 
-## 5. Naming Rules
+`Packages/Core`、`Packages/Schema`、`Packages/Protocol` 不得依赖 Unreal、Unity、Godot SDK 或引擎专属类型。
+
+共享数据命名应描述产品概念，例如 Agent、Context、Intent、Behavior、Request、Resource、Scheduler，而不是 `UObject`、`GameObject`、`Node` 等宿主实现。
+
+实现语言和构建系统仍可演进；在 ADR 未确认前，不要因为某个 Bridge 的语言选择反向锁死整个 Core。
+
+## 6. Runtime Independence
+
+Workbench 是主要开发工具，但不是 shipping runtime 的强依赖。
+
+任何核心运行路径都必须满足：
+
+- 浏览器未打开时仍能执行；
+- Live connection 断开不会破坏 Agent 生命周期；
+- Debug telemetry 可以禁用或降级；
+- 编辑数据能够以版本化的 portable artifact 被 Bridge 本地加载。
+
+## 7. Protocol & Schema Discipline
+
+- Schema 与 Protocol 必须有显式版本。
+- 破坏兼容的字段变更必须记录在 `Docs/DECISIONS.md` / CHANGELOG。
+- 协议实现应与具体传输方式解耦；WebSocket 可以是首选实现，但不是产品语义本身。
+- 所有 Bridge 对同一通用字段应具有一致语义。
+- 不允许通过未版本化的自由 JSON 长期传递关键运行状态。
+
+## 8. StateTree And Other Engine Systems
+
+StateTree 可以是 Unreal Bridge 的重要 Behavior Execution backend，但 **Volition ≠ StateTree Framework**。
+
+同理，Unity Behavior Tree、Godot Node/Resource 或 Web 端任意库都只能作为 Bridge/Adapter 实现，不得成为跨引擎 Core 的定义来源。
+
+## 9. Naming Rules
 
 统一使用：
 
-- `VolitionCore`
-- `VolitionRuntime`
-- `VolitionEditor`
-- `Volition` 作为产品/命名空间/公共类型前缀
+- `Volition`：产品和共享概念；
+- `Volition Workbench`：浏览器工具；
+- `Volition Unreal Bridge` / `Unity Bridge` / `Godot Bridge` / `Web Bridge`：宿主适配。
 
-禁止新增：
+禁止新增 `UDMBF2`、`UDMBFNext` 等旧品牌过渡命名。
 
-- `UDMBF2`
-- `UDMBFNext`
-- 其他把 2.0 描述成旧项目升级版的命名
-
-UE 反射类型使用明确前缀，例如 `UVolition...`、`FVolition...`。
-
-## 6. Change Discipline
+## 10. Change Discipline
 
 - 一次任务解决一个明确问题。
 - 避免无关重构。
-- 公共 API 变更必须同步文档。
-- 新增核心概念前，先检查 `Docs/ARCHITECTURE.md` 和 `Docs/DECISIONS.md`。
-- 架构选择存在长期影响时，在 `Docs/DECISIONS.md` 增加记录。
-- 不要为了“未来可能需要”提前引入大型抽象层。
+- 新增通用概念前先检查 `Docs/ARCHITECTURE.md` 与 `Docs/DECISIONS.md`。
+- 架构选择存在长期影响时必须记录决策。
+- 优先端到端垂直切片，不提前实现大而全抽象。
+- Bridge-specific 功能不能为了方便直接进入共享层。
 
-## 7. Build & Validation
+## 11. Build & Validation
 
-每次代码改动至少检查：
+按改动范围验证：
 
-1. 模块依赖方向正确；
-2. Runtime 不引用 Editor-only API；
-3. 公共头文件不泄漏无必要依赖；
-4. 新增 API 有最小文档说明；
-5. 能自动测试的行为优先增加 Automation Test；
-6. 无法在当前环境构建时，必须明确说明未验证项，不得声称已编译通过。
+1. Workbench：类型检查、lint、测试、浏览器运行验证；
+2. Schema：schema validation、兼容性 fixtures；
+3. Protocol：序列化/反序列化、版本与消息契约测试；
+4. Bridge：对应宿主引擎构建与最小连接测试；
+5. 跨层改动：至少完成一个端到端数据往返验证。
 
-## 8. Compatibility Policy
+无法在当前环境验证时必须明确说明，不得声称已通过。
 
-Pre-alpha 阶段优先正确架构而非 API 稳定性。
+## 12. License Policy
 
-- 不承诺 UDMBF 1.0 兼容。
-- 不承诺早期 Volition API 永久稳定。
-- 破坏性变更必须有理由并更新 CHANGELOG / DECISIONS。
+当前 License 尚未确定。不得自行加入 MIT、Apache-2.0、GPL 等许可证，也不要复制许可证不明确的第三方代码。
 
-## 9. License Policy
+## 13. Definition of Done
 
-当前 License 尚未确定。
-
-AI 代理不得自行加入 MIT、Apache-2.0、GPL 等许可证，也不要复制许可证不明确的第三方代码。
-
-## 10. Definition of Done
-
-一个任务完成时，应至少给出：
-
-- 改了什么；
-- 为什么这样改；
-- 如何验证；
-- 未验证或遗留的问题；
-- 下一步最合理的后续任务（如有）。
+任务完成时至少说明：改了什么、为什么这样改、如何验证、未验证项，以及下一步最合理的后续任务。

@@ -2,8 +2,8 @@
   "FileVersion": 3,
   "Version": 20000,
   "VersionName": "2.0.0-dev",
-  "FriendlyName": "Volition",
-  "Description": "Agent Decision & Behavior Framework. A BAIGE Project.",
+  "FriendlyName": "Volition Unreal Bridge",
+  "Description": "Unreal Engine bridge and project configuration integration for Volition. Primary authoring and debugging live in the browser-based Volition Workbench.",
   "Category": "Artificial Intelligence",
   "CreatedBy": "BAIGE",
   "EnabledByDefault": false,
@@ -12,17 +12,12 @@
   "Installed": false,
   "Modules": [
     {
-      "Name": "VolitionCore",
+      "Name": "VolitionUnrealBridge",
       "Type": "Runtime",
       "LoadingPhase": "Default"
     },
     {
-      "Name": "VolitionRuntime",
-      "Type": "Runtime",
-      "LoadingPhase": "Default"
-    },
-    {
-      "Name": "VolitionEditor",
+      "Name": "VolitionUnrealEditor",
       "Type": "Editor",
       "LoadingPhase": "PostEngineInit"
     }

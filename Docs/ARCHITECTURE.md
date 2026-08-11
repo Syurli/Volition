@@ -1,32 +1,140 @@
 # Volition Architecture
 
-> Status: Initial architecture contract v0.1. This document defines boundaries, not a frozen implementation.
+> Status: Platform architecture contract v0.2. 本文定义边界，不冻结具体实现语言。
 
-## 1. Layering
+## 1. Platform Layers
 
 ```text
-┌─────────────────────────────────────────────┐
-│              VolitionEditor                 │
-│ Debugger / Visualization / Asset Tooling    │
-└──────────────────────┬──────────────────────┘
-                       ↓
-┌─────────────────────────────────────────────┐
-│              VolitionRuntime                │
-│ Agent / Decision / Behavior / Resource      │
-│ Request / Scheduler / Engine Integration    │
-└──────────────────────┬──────────────────────┘
-                       ↓
-┌─────────────────────────────────────────────┐
-│                VolitionCore                 │
-│ IDs / Handles / Contracts / Events / Types  │
-└─────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                    Apps / Workbench                       │
+│ Browser UI: Authoring / Debugger / Timeline / Validation  │
+└────────────────────────────┬──────────────────────────────┘
+                             │ portable artifacts + live data
+┌────────────────────────────┴──────────────────────────────┐
+│                    Portable Packages                      │
+│       Core              Schema              Protocol      │
+│ semantics / logic   persisted contracts   live contracts │
+└────────────────────────────┬──────────────────────────────┘
+                             │ host adaptation
+┌────────────────────────────┴──────────────────────────────┐
+│                         Bridges                           │
+│          Unreal        Unity        Godot        Web      │
+└────────────────────────────┬──────────────────────────────┘
+                             │
+┌────────────────────────────┴──────────────────────────────┐
+│                  Game / Simulation Host                   │
+└───────────────────────────────────────────────────────────┘
 ```
 
-依赖必须保持单向：`Editor → Runtime → Core`。
+核心原则：**Workbench 与具体引擎解耦，Bridge 与共享产品语义解耦。**
 
-## 2. Conceptual Runtime
+## 2. Two Planes
 
-初始概念模型：
+Volition 明确区分两个平面。
+
+### Authoring & Debug Plane
+
+主要运行在浏览器：
+
+- 编辑 Agent / Decision / Behavior 配置；
+- 验证配置与依赖；
+- 连接运行实例；
+- 展示 Decision、Intent、Scheduler、Resource、Request；
+- 保存 Trace / Timeline；
+- 提供 AI 辅助或自动化入口。
+
+### Runtime & Execution Plane
+
+运行在游戏/模拟宿主环境：
+
+- 加载 portable config；
+- 采集宿主 Context；
+- 驱动 Agent runtime；
+- 调用实际 Behavior backend；
+- 处理资源、调度、生命周期；
+- 可选地向 Workbench 输出 telemetry。
+
+**Runtime Plane 不得依赖 Workbench 在线。**
+
+## 3. Portable Packages
+
+### Packages/Core
+
+承载引擎无关的概念模型与可移植逻辑：Agent、Context、Decision、Intent、Behavior reference、Request、Resource、Scheduler 等。
+
+这里的“Core”描述产品边界，不预先锁死 TypeScript、C++、Rust/WASM 或其他实现方式。具体复用策略应由垂直切片验证后决定。
+
+### Packages/Schema
+
+定义持久化配置和交换资产的稳定语义：
+
+- version；
+- IDs / references；
+- Agent definitions；
+- decision/behavior configuration；
+- resource definitions；
+- engine-neutral metadata；
+- engine extension namespace。
+
+通用字段不得直接包含 `UObject`、Unity `GameObject`、Godot `NodePath` 等宿主专属类型。
+
+### Packages/Protocol
+
+定义 Workbench ↔ Bridge 的实时消息契约，覆盖：
+
+- handshake / capability negotiation；
+- project / instance identity；
+- Agent inventory；
+- runtime snapshot；
+- telemetry / trace；
+- config sync；
+- validation result；
+- optional development commands。
+
+Protocol 与传输实现解耦。WebSocket 可以是首版默认 transport，但不能成为协议语义本身。
+
+## 4. Bridge Contract
+
+每个 Bridge 负责把 Volition 产品概念映射到宿主环境。
+
+允许职责：
+
+- Host object ↔ Volition Agent ID；
+- Context provider；
+- Behavior execution adapter；
+- host asset/reference resolver；
+- portable config loader；
+- telemetry producer；
+- protocol transport endpoint；
+- project settings / connection bootstrap。
+
+不允许职责：
+
+- 重新定义通用 Agent/Decision/Resource 语义；
+- 实现与 Workbench 重复的完整编辑器/Debugger；
+- 把宿主对象类型泄漏到共享 Schema；
+- 让其他 Bridge 依赖当前 Bridge。
+
+## 5. Unreal Bridge
+
+Unreal 是首个生产验证环境，但位于 `Bridges/Unreal`，不是仓库根架构。
+
+初始模块建议：
+
+```text
+VolitionUnrealBridge   # Runtime bridge / host adaptation / transport
+VolitionUnrealEditor   # Settings / sync / connection / launch Workbench
+```
+
+StateTree 可以作为 Behavior Execution backend，通过 Unreal Bridge adapter 接入。它不是 Volition Core 的定义来源。
+
+## 6. Unity / Godot / Web Bridges
+
+这些目录现在预留，以便从一开始验证命名和边界是否真正跨引擎。
+
+第一阶段不要求功能对等，但新增共享 Schema/Protocol 时必须能够说明它们如何被这些 Bridge 理解，或者明确记录为什么暂时只能由某个 engine extension 表达。
+
+## 7. Conceptual Runtime
 
 ```text
 Agent
@@ -39,104 +147,47 @@ Agent
  └─ Scheduler
 ```
 
-这些名称描述产品概念，不代表当前已经存在同名 UObject 或 C++ 类型。
+- Decision：回答“当前更应该做什么”；
+- Intent：在决策与执行之间提供稳定表达；
+- Scheduler / Arbitration：回答“现在什么可以执行”；
+- Request / Resource / Ownership：处理竞争、排他和释放。
 
-## 3. Agent
+## 8. Data Flow
 
-Agent 是 Volition 的运行时主体。
+### Offline authoring
 
-职责方向：
+```text
+Workbench
+   ↓ save/export
+Portable Schema Artifact
+   ↓ load
+Bridge
+   ↓ resolve host references
+Game Runtime
+```
 
-- 维护自身生命周期；
-- 提供可查询 Context；
-- 承载当前 Intent / Behavior 状态；
-- 参与调度、请求和资源仲裁；
-- 暴露可调试状态。
+### Live debugging
 
-Agent 不应成为包含所有 AI 逻辑的 God Object。
+```text
+Game Runtime
+   ↓ snapshot / telemetry
+Bridge
+   ↓ Protocol
+Workbench
+   ↓ inspect / trace / optional dev command
+```
 
-## 4. Context
+## 9. Open Questions
 
-Context 表示做出决策所需的当前信息。
+暂不在初始化阶段锁死：
 
-设计原则：
-
-- 明确来源与生命周期；
-- 避免让决策逻辑直接抓取任意世界状态；
-- 支持调试时解释“当时看到了什么”；
-- 后续可以区分稳定上下文、瞬时事件和派生值。
-
-## 5. Decision & Intent
-
-Decision 负责回答“当前更应该做什么”。
-
-Intent 是 Decision 与具体 Behavior 执行之间的稳定表达层。
-
-这样做的目的，是允许未来存在不同决策来源，例如 Utility、规则系统、任务系统或上层 Director，而不用让执行层被某一种决策算法锁死。
-
-## 6. Behavior
-
-Behavior 表示可执行的行动单元或行动流程。
-
-Volition 不规定 Behavior 必须由某一种系统实现。Unreal 首版可以与 StateTree 等系统集成，但集成应处于 Runtime/Adapter 边界，而不是反向定义 Core。
-
-## 7. Request / Resource / Ownership
-
-这一组概念负责解决行为竞争：
-
-- **Request**：某个行为希望获得或改变什么；
-- **Resource**：存在竞争或排他性的运行时能力；
-- **Ownership**：当前谁持有资源或执行权；
-- **Release**：生命周期结束时如何显式归还。
-
-设计时应避免“请求已结束但资源仍被隐式占用”的状态。
-
-## 8. Scheduler / Arbitration
-
-Scheduler 负责决定哪些工作可以进入执行阶段，以及竞争发生时如何处理。
-
-它不应吞并 Decision 的全部职责：
-
-- Decision 主要表达 **应该做什么**；
-- Scheduler / Arbitration 主要表达 **现在什么可以执行**。
-
-这个边界后续需要通过最小垂直切片验证。
-
-## 9. StateTree Integration
-
-StateTree 在 Unreal 实现中可以承担 Behavior Execution 的重要角色。
-
-原则：
-
-- StateTree 是 integration target，不是 Volition 的产品定义；
-- `VolitionCore` 不依赖 StateTree；
-- 与 StateTree 相关的 evaluator/task/schema/adapter 应位于 Runtime 或后续独立 integration module；
-- 应允许未来接入其他行为执行后端。
-
-## 10. Editor & Debugger
-
-调试能力应从 Runtime 数据模型开始设计，而不是最后补做。
-
-目标调试信息至少应逐步覆盖：
-
-- Agent 当前状态；
-- 当前 Decision / Intent；
-- Behavior 切换原因；
-- 活跃 Request；
-- Resource ownership；
-- Scheduler 选择/拒绝原因；
-- 关键状态时间线。
-
-## 11. Open Questions
-
-以下内容暂不在初始化阶段强行锁死：
-
-- Decision Policy 的具体接口形态；
-- Intent 是否需要独立 UObject / UStruct 表达；
-- Resource 粒度与层级；
-- Scheduler 是每 Agent、World 级还是混合结构；
-- StateTree integration 是否拆成独立模块；
+- Core 的最终实现语言与跨语言分发方式；
+- portable artifact 的具体文件格式（JSON/二进制/混合）；
+- WebSocket、IPC 与远程连接的 transport 组合；
+- Decision Policy 的具体接口；
+- Scheduler 的宿主粒度；
 - 网络复制边界；
-- Mass / ECS integration。
+- Bridge capability negotiation 的细节；
+- Unity/Godot 首个可运行里程碑。
 
-这些问题应通过后续垂直切片和 ADR 决定，而不是在没有代码验证前一次性设计完。
+这些问题通过端到端垂直切片和 ADR 决定。

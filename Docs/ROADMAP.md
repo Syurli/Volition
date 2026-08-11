@@ -1,124 +1,134 @@
 # Volition Initial Roadmap
 
-> 这是初始化阶段的里程碑地图，不是发布日期承诺。顺序可以根据验证结果调整。
+> 初始化阶段的里程碑地图，不是发布日期承诺。
 
-## Phase 0 — Foundation
+## Phase 0 — Platform Foundation
 
-目标：让仓库、模块与概念边界可稳定开始开发。
+目标：让仓库形态与产品真实边界一致。
 
 - [x] 确认产品命名：能动 Volition
 - [x] 确认厂牌：A BAIGE Project
-- [x] 建立 Core / Runtime / Editor 模块边界
-- [x] 建立产品、架构和 AI 开发约束文档
-- [ ] 确认首个目标 Unreal Engine 版本矩阵
+- [x] 仓库从 Unreal 插件结构重构为平台 monorepo
+- [x] 独立 `Apps/Workbench`
+- [x] 建立 `Packages/Core`、`Packages/Schema`、`Packages/Protocol` 边界
+- [x] 建立 Unreal / Unity / Godot / Web Bridge 目录
+- [x] 明确浏览器优先、引擎轻桥接原则
 - [ ] 确认开源 / 商业许可证策略
-- [ ] 建立最小 CI 编译验证
+- [ ] 确认首批语言、包管理与 CI 技术栈
 
-**Exit Criteria**：空插件可在目标 UE 版本加载，仓库有明确的开发规则和依赖边界。
+**Exit Criteria**：任何新功能都能明确归属 Workbench、Portable Package 或某个 Bridge，而不是默认塞进 Unreal 插件。
 
-## Phase 1 — Minimal Agent Runtime
+## Phase 1 — Portable Contracts
 
-目标：完成不依赖复杂 AI 系统的最小 Agent 运行闭环。
+目标：先固定跨引擎通信与配置的最小语言。
 
-候选任务：
+- Volition project / config version
+- Agent ID / definition
+- Context key/value 与 provider contract
+- Intent / Behavior reference
+- Resource / Request identity
+- engine extension namespace
+- Protocol handshake / capability negotiation
+- snapshot / telemetry message envelope
+- schema fixtures 与兼容测试
 
-- Agent identity / handle
+**Exit Criteria**：同一份最小 Agent 配置可以被 Web reference bridge 与 Unreal Bridge 解释；实时连接可以完成 handshake 和 Agent inventory。
+
+## Phase 2 — Workbench Shell
+
+目标：建立独立浏览器工具的最小可运行产品壳层。
+
+- Project open / recent projects
+- Connection manager
+- Agent list / basic inspector
+- portable config viewer/editor
+- schema validation
+- runtime snapshot panel
+- trace/timeline 基础容器
+
+**Exit Criteria**：无需打开引擎内复杂编辑器，即可浏览配置并连接一个测试 Bridge。
+
+## Phase 3 — Unreal End-to-End Slice
+
+目标：用首个生产 Bridge 验证整个架构，而不是让 Unreal 定义架构。
+
+- `VolitionUnrealBridge` 最小运行模块
+- `VolitionUnrealEditor` 项目设置与 Workbench 启动/连接入口
+- Agent host registration
+- Context provider adapter
+- portable config loader
+- live telemetry transport
+- 一个最小 Behavior execution adapter
+- StateTree adapter 作为候选后端
+
+**Exit Criteria**：Workbench 编辑/读取配置 → Unreal 加载 → Agent 执行 → telemetry 回到 Workbench，形成完整往返。
+
+## Phase 4 — Decision, Scheduling & Ownership
+
+目标：完成 Volition 的核心 Agent 运行语义。
+
 - Agent lifecycle
-- Runtime registration
-- Context 基础模型
-- Intent / Behavior 的最小表达
-- 基础事件与状态查询
-- Automation Tests
-
-**Exit Criteria**：测试场景中可创建 Agent、观察 Context、触发一个明确行为并正确结束生命周期。
-
-## Phase 2 — Decision & Scheduling
-
-目标：把“选择什么”和“何时执行”分离。
-
-候选任务：
-
-- Decision Policy 接口
+- Decision Policy
 - Intent selection
-- Priority
-- Scheduler
-- 可解释的选择/拒绝原因
-- 行为切换规则
+- Priority / Scheduler
+- Request / Resource / Ownership
+- Acquire / Release / Cancellation
+- selection/rejection reason
+- deterministic tests / failure cleanup
 
-**Exit Criteria**：多个候选行为竞争时，结果稳定、可测试、可解释。
+**Exit Criteria**：多个候选行为竞争时结果稳定、可测试、可解释，并可在 Workbench 中观察原因。
 
-## Phase 3 — Resource & Request Arbitration
+## Phase 5 — Web Authoring & Debugging
 
-目标：解决多个行为对有限能力的竞争和释放。
+目标：将主要开发体验完整放到浏览器端。
 
-候选任务：
-
-- Resource identity
-- Acquire / Request / Release 语义
-- Ownership
-- Pending request
-- Cancellation
-- Flush / cleanup
-- 冲突与饥饿策略
-
-**Exit Criteria**：资源竞争、取消和生命周期结束均不会留下悬空 ownership。
-
-## Phase 4 — Unreal Behavior Integration
-
-目标：验证 Volition 作为上层 Agent Framework 可以驱动实际 UE 行为执行。
-
-候选任务：
-
-- StateTree integration
-- Behavior adapter
-- Context bridge
-- execution callbacks
-- failure / interruption mapping
-- 示例 Enemy / NPC
-
-**Exit Criteria**：Volition 决策能够稳定驱动一个真实 StateTree 行为，并支持中断、切换和回收。
-
-## Phase 5 — Debugger & Tooling
-
-目标：开发者能够直接看懂 Agent 为什么这样行动。
-
-候选任务：
-
-- Agent inspector
 - Decision / Intent view
-- Request & Resource view
+- Behavior configuration
+- Resource / Request graph
 - Scheduler trace
 - Timeline / history
-- validation warnings
+- validation diagnostics
+- configuration diff / import / export
+- profile / performance view
 
-**Exit Criteria**：常见行为竞争问题无需逐行断点即可定位。
+**Exit Criteria**：常见 Agent 行为和资源竞争问题无需进入引擎自定义 Debugger 即可定位。
 
-## Phase 6 — Public 2.0 Candidate
+## Phase 6 — Additional Bridges
 
-目标：形成可以供真实项目试用的完整最小产品。
+目标：验证跨引擎设计不是文档假设。
 
-- 示例工程 / Demo
-- API 文档
-- Migration stance 文档
+### Web Bridge
+
+优先作为轻量 reference host 与自动化验证环境。
+
+### Unity Bridge
+
+建立 Package、host mapping、config loading、telemetry 与最小 execution adapter。
+
+### Godot Bridge
+
+建立 Addon、Node/Resource mapping、config loading、telemetry 与最小 execution adapter。
+
+**Exit Criteria**：至少两个非 Unreal Host 能加载同一 portable config，并通过同一 Workbench/Protocol 被观察。
+
+## Phase 7 — Public 2.0 Candidate
+
+- 示例工程 / reference projects
+- API / Schema / Protocol 文档
 - 性能 profiling
-- 错误处理
-- 包体与发布流程
-- Fab / GitHub 发布准备
+- Bridge capability matrix
+- 错误处理与版本迁移
+- 发布与打包流程
 - License 与第三方依赖清单
 
-**Exit Criteria**：真实项目可集成、可调试、可升级，核心工作流有自动验证。
+**Exit Criteria**：真实项目可集成、可调试、可升级，共享配置和核心工作流有自动验证。
 
 ## Later Exploration
 
-在核心 Runtime 稳定后再评估：
-
 - Utility AI 标准实现
 - World / Squad / Director 层调度
-- Mass Entity integration
+- Mass / ECS integrations
 - 网络复制
 - Save / restore runtime state
-- Web reference runtime
-- Unity / Godot bridge
 - LLM / planner integration
-
-这些方向当前不是核心 Runtime 的阻塞项。
+- remote collaborative debugging

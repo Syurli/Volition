@@ -1,25 +1,8 @@
-# Unreal Engine
-Binaries/
-Build/
-DerivedDataCache/
-Intermediate/
-Saved/
-
-# Generated project files
-*.sln
-*.suo
-*.opensdf
-*.sdf
-*.VC.db
-*.VC.opendb
-
-# IDE / editor
+# IDE / OS
 .vs/
 .idea/
 .vscode/
 *.code-workspace
-
-# OS
 .DS_Store
 Thumbs.db
 Desktop.ini
@@ -29,9 +12,38 @@ Desktop.ini
 *.tmp
 *.temp
 
-# Packaging / local output
-Dist/
-Packages/
-Staging/
+# Web / Node
+**/node_modules/
+**/.vite/
+**/.next/
+**/coverage/
+**/dist/
+**/.turbo/
 
-# Keep repository assets and source tracked explicitly.
+# Unreal Engine bridge
+Bridges/Unreal/**/Binaries/
+Bridges/Unreal/**/DerivedDataCache/
+Bridges/Unreal/**/Intermediate/
+Bridges/Unreal/**/Saved/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Unity bridge
+Bridges/Unity/**/Library/
+Bridges/Unity/**/Temp/
+Bridges/Unity/**/Obj/
+Bridges/Unity/**/Logs/
+Bridges/Unity/**/UserSettings/
+
+# Godot bridge
+Bridges/Godot/**/.godot/
+
+# Local output
+/Staging/
+/Dist/
+
+# NOTE: root Packages/ is source and must remain tracked.
