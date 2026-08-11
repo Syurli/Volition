@@ -19,8 +19,18 @@ export function isWalkable(grid: NavigationGrid, point: GridPoint): boolean {
   return point.x >= 0 && point.y >= 0 && point.x < grid.width && point.y < grid.height && !grid.blocked.has(gridKey(point));
 }
 
-export function findPath(grid: NavigationGrid, start: GridPoint, goal: GridPoint): readonly GridPoint[] {
+/**
+ * Deterministic grid A*. `transientBlocked` is used by simulation hosts for moving occupancy such as
+ * squad members. The start cell is always allowed so an actor can path out of its own reservation.
+ */
+export function findPath(
+  grid: NavigationGrid,
+  start: GridPoint,
+  goal: GridPoint,
+  transientBlocked: ReadonlySet<string> = EMPTY_TRANSIENT_BLOCKED,
+): readonly GridPoint[] {
   if (!isWalkable(grid, start) || !isWalkable(grid, goal)) return [];
+  if (transientBlocked.has(gridKey(goal)) && (start.x !== goal.x || start.y !== goal.y)) return [];
   if (start.x === goal.x && start.y === goal.y) return [start];
   const open = new Map<string, { point: GridPoint; g: number; f: number }>();
   const cameFrom = new Map<string, GridPoint>();
@@ -34,9 +44,9 @@ export function findPath(grid: NavigationGrid, start: GridPoint, goal: GridPoint
     open.delete(currentKey);
     if (current.point.x === goal.x && current.point.y === goal.y) return reconstructPath(cameFrom, current.point);
     for (const neighbor of neighbors(current.point)) {
-      if (!isWalkable(grid, neighbor)) continue;
-      const tentative = current.g + 1;
       const neighborKey = gridKey(neighbor);
+      if (!isWalkable(grid, neighbor) || transientBlocked.has(neighborKey)) continue;
+      const tentative = current.g + 1;
       if (tentative >= (gScore.get(neighborKey) ?? Number.POSITIVE_INFINITY)) continue;
       cameFrom.set(neighborKey, current.point);
       gScore.set(neighborKey, tentative);
@@ -66,6 +76,8 @@ export function rasterLine(from: GridPoint, to: GridPoint): readonly GridPoint[]
   }
   return result;
 }
+
+const EMPTY_TRANSIENT_BLOCKED: ReadonlySet<string> = new Set<string>();
 
 function neighbors(point: GridPoint): readonly GridPoint[] {
   return [{ x: point.x + 1, y: point.y }, { x: point.x, y: point.y + 1 }, { x: point.x - 1, y: point.y }, { x: point.x, y: point.y - 1 }];
