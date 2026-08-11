@@ -7,7 +7,7 @@
 首版不是大型 AI 节点编辑器，而是一个可直接使用的 Runtime Inspector：
 
 - bundled Tactical Wizard generic rifle demo；
-- Project / portable config viewer 与 validation；
+- Project / portable config viewer、JSON file import 与 validation；
 - Agent list；
 - Context / Observation；
 - Memory / Belief；
@@ -22,12 +22,20 @@
 从仓库根目录：
 
 ```bash
-npm ci
+npm install
 npm run test
 npm run build
 ```
 
 本地 production build 与 GitHub Pages 使用相同 `npm run build`，产物位于 `Apps/Workbench/dist`。
+
+Tactical Wizard 侧本地合同验证可生成 source reference tarballs：
+
+```bash
+npm run pack:reference
+```
+
+该产物仅用于当前双仓验证，不提前决定 npm registry / GitHub Packages / binary/WASM 等长期分发策略。
 
 ## Connection modes
 
