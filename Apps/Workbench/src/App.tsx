@@ -69,7 +69,7 @@ export function App() {
       if (direction === undefined) return;
       const [dx, dy] = directionDelta(direction);
       if (simulationRef.current.nudgePlayer(dx, dy)) setSimulation(simulationRef.current.getState());
-    }, 85);
+    }, 55);
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
     window.addEventListener('blur', blur);
