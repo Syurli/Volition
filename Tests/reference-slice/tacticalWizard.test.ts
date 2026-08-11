@@ -39,6 +39,16 @@ describe('Tactical Wizard Reference Slice 01', () => {
     expect(lostTrace.belief.estimatedPosition).toEqual({ x: 8, y: 0, z: 8 });
   });
 
+  it('records candidate rejection, intent replacement, action cancellation and host results in Trace', () => {
+    const run = runTacticalWizardFixture();
+    const engage = run.traces.find((trace) => trace.logicalTick === 3)!;
+    const search = run.traces.find((trace) => trace.logicalTick === 5)!;
+    expect(engage.candidates.find((candidate) => candidate.intent.id === 'engage')?.eligible).toBe(true);
+    expect(engage.candidates.find((candidate) => candidate.intent.id === 'reload')?.rejectedReason).toBe('weapon_not_empty');
+    expect(search.cancelledIntent?.reason).toBe('replaced_by:search');
+    expect(search.actionResults.some((result) => result.status === 'cancelled')).toBe(true);
+  });
+
   it('sorts stimulus sequence before cognition so host array order cannot change the decision', () => {
     const policy = new UtilityDecisionPolicy('order-test', (input: DecisionInput): readonly DecisionCandidate[] => [{
       id: 'candidate:patrol',
@@ -66,17 +76,16 @@ describe('Tactical Wizard Reference Slice 01', () => {
   });
 
   it('reset clears memory, action and trace state', () => {
-    const run = runTacticalWizardFixture();
-    expect(run.traces.length).toBeGreaterThan(0);
-    const runtime = (awaitRuntimeFactory());
+    const runtime = makeTestRuntime();
     runtime.tick({ tick: { logicalTick: 1, deltaSeconds: 1, seed: 1 }, context: fixtureContext(1), stimuli: [] });
+    expect(runtime.getTrace()).toHaveLength(1);
     runtime.reset();
     expect(runtime.getTrace()).toEqual([]);
     expect(() => runtime.getSnapshot()).toThrow('has not ticked');
   });
 });
 
-function awaitRuntimeFactory(): AgentRuntime {
+function makeTestRuntime(): AgentRuntime {
   const policy = new UtilityDecisionPolicy('reset-test', (): readonly DecisionCandidate[] => [{
     id: 'candidate:patrol',
     intent: { id: 'patrol', behavior: { id: 'host.behavior.patrol' }, reason: 'fallback' },

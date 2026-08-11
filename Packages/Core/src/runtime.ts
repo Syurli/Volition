@@ -50,8 +50,8 @@ export class AgentRuntime {
       throw new Error(`Context agentId ${input.context.agentId} does not match runtime ${this.#options.agentId}.`);
     }
 
-    const actionResults = input.actionResults ?? [];
-    this.#applyActionResults(actionResults);
+    const hostActionResults = input.actionResults ?? [];
+    this.#applyActionResults(hostActionResults);
     const memoryBefore = cloneMemory(this.#memory);
     this.#memory = decayMemory(this.#memory, input.tick.deltaSeconds, this.#options.memoryDecayPerSecond);
 
@@ -83,6 +83,7 @@ export class AgentRuntime {
     const decision = this.#options.policy.decide(decisionInput);
 
     let cancelledIntent: DecisionTrace['cancelledIntent'];
+    const cancellationResults: ActionResult[] = [];
     const changedIntent = this.#currentIntent?.id !== decision.selected.id;
     if (changedIntent && this.#currentIntent !== null) {
       cancelledIntent = {
@@ -96,6 +97,7 @@ export class AgentRuntime {
           status: 'cancelled',
           reason: `intent_replaced_by:${decision.selected.id}`,
         };
+        cancellationResults.push(result);
         return { ...entry, status: 'cancelled', result };
       });
     }
@@ -127,7 +129,7 @@ export class AgentRuntime {
       selectedIntent: decision.selected,
       ...(cancelledIntent === undefined ? {} : { cancelledIntent }),
       actionRequests: actionRequests.map((entry) => entry.action),
-      actionResults: [...actionResults],
+      actionResults: [...hostActionResults, ...cancellationResults],
     };
     this.#trace.push(trace);
 

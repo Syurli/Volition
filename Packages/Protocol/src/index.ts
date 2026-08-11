@@ -73,7 +73,9 @@ export function deserializeEnvelope(serialized: string): KnownEnvelope {
   const value: unknown = JSON.parse(serialized);
   if (!isRecord(value)) throw new Error('Protocol envelope must be an object.');
   if (value.protocolVersion !== VOLITION_PROTOCOL_VERSION) throw new Error(`Unsupported protocol version: ${String(value.protocolVersion)}.`);
-  if (!Number.isInteger(value.sequence) || (value.sequence as number) < 0) throw new Error('Protocol sequence must be a non-negative integer.');
+  if (typeof value.sequence !== 'number' || !Number.isInteger(value.sequence) || value.sequence < 0) {
+    throw new Error('Protocol sequence must be a non-negative integer.');
+  }
   if (!isMessageType(value.type)) throw new Error(`Unsupported protocol message type: ${String(value.type)}.`);
   if (!('payload' in value)) throw new Error('Protocol payload is required.');
   return value as unknown as KnownEnvelope;

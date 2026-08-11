@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install workspace dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck, deterministic tests, and production build
+        run: npm run build
+      - name: Verify reproducible local reference package output
+        run: npm run pack:reference

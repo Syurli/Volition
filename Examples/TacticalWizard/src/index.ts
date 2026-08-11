@@ -2,6 +2,7 @@ import {
   AgentRuntime,
   UtilityDecisionPolicy,
   type ActionPlanner,
+  type ActionResult,
   type ContextSnapshot,
   type DecisionCandidate,
   type DecisionInput,
@@ -76,12 +77,22 @@ export function createTacticalWizardReferenceRuntime(): AgentRuntime {
 export function runTacticalWizardFixture(seed = 1337): TacticalWizardFixtureRun {
   const runtime = createTacticalWizardReferenceRuntime();
   const snapshots: ReturnType<AgentRuntime['getSnapshot']>[] = [];
+  let pendingActionResults: readonly ActionResult[] = [];
   for (let logicalTick = 0; logicalTick <= 8; logicalTick += 1) {
-    snapshots.push(runtime.tick({
+    const snapshot = runtime.tick({
       tick: { logicalTick, deltaSeconds: logicalTick === 0 ? 0 : 1, seed },
       context: fixtureContext(logicalTick),
       stimuli: fixtureStimuli(logicalTick),
-    }));
+      actionResults: pendingActionResults,
+    });
+    snapshots.push(snapshot);
+    pendingActionResults = snapshot.actions
+      .filter((entry) => entry.status === 'requested')
+      .map((entry): ActionResult => ({
+        actionId: entry.action.id,
+        status: entry.action.kind === 'move_to' || entry.action.kind === 'aim_at' ? 'running' : 'succeeded',
+        reason: 'deterministic_fixture_executor',
+      }));
   }
   return {
     config: tacticalWizardProjectConfig,
