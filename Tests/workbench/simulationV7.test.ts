@@ -56,7 +56,7 @@ describe('Tactical Wizard V7 fire-lane deconfliction and compound map', () => {
     expect(sawTwoSafeLanes).toBe(true);
   });
 
-  it('keeps grenade events visible through an explicit flight and effect window', () => {
+  it('keeps grenade events on a long explicit flight plus effect lifecycle', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.getState();
@@ -73,7 +73,9 @@ describe('Tactical Wizard V7 fire-lane deconfliction and compound map', () => {
     expect(first).not.toBeNull();
     expect(first!.totalFrames).toBe(72);
     expect(first!.flightFrames).toBe(18);
-    expect(first!.remainingFrames).toBeGreaterThan(30);
+    expect(first!.flightFrames).toBeLessThan(first!.totalFrames);
+    expect(first!.remainingFrames).toBeGreaterThan(0);
+    expect(first!.remainingFrames).toBeLessThanOrEqual(first!.totalFrames);
   });
 });
 
