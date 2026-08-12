@@ -85,14 +85,16 @@ interface ResupplyAssignment {
   readonly task: LogisticsTask;
 }
 
-type UnsafeMember = TacticalWizardAgentViewV7 & {
+interface UnsafeMember {
+  readonly id: string;
+  readonly label: string;
   grenadeCount: number;
   firePulse: number;
   role: string;
   task: TacticalTask;
   targetVisible: boolean;
   position: GridPoint;
-};
+}
 
 type UnsafeV7 = {
   members: UnsafeMember[];
@@ -162,6 +164,10 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
     return this.getState();
   }
 
+  override step(): TacticalWizardSimulationState {
+    return this.advance(this.stepSeconds);
+  }
+
   override advance(deltaSeconds: number): TacticalWizardSimulationState {
     this.validateAssignment();
     this.planResupplyIfNeeded();
@@ -210,6 +216,17 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
         activeResupplySupplyId: assignment?.supplyId ?? null,
       },
     };
+  }
+
+  /** Workbench/debug hook used by deterministic scenario tests and future equipment authoring UI. */
+  setAgentEquipment(agentId: string, values: { readonly ammoRounds?: number; readonly grenades?: number }): boolean {
+    const equipment = this.equipment.get(agentId);
+    const member = this.unsafe().members.find((entry) => entry.id === agentId);
+    if (equipment === undefined || member === undefined) return false;
+    if (values.ammoRounds !== undefined) equipment.ammoRounds = Math.max(0, Math.min(equipment.ammoCapacity, Math.round(values.ammoRounds)));
+    if (values.grenades !== undefined) member.grenadeCount = Math.max(0, Math.min(equipment.grenadeCapacity, Math.round(values.grenades)));
+    if (this.assignment?.agentId === agentId) this.assignment = null;
+    return true;
   }
 
   private installV8Hooks(): void {
