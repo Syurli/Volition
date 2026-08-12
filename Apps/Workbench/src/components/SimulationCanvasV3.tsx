@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { Locale } from '../i18n';
 import { localizedAssetName, localizedTactic } from '../assetLocalization';
-import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
+import { tacticalWizardTestMap, type GrenadeVisual, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
 import type { GridPoint } from '../simulation/navigation';
 
 const CELL = 22;
@@ -40,7 +40,9 @@ export function SimulationCanvas({ state, overlays, onSetPlayer, locale }: Props
     {state.agents.map((agent) => agent.targetVisible ? <line key={`los-${agent.id}`} className="sim-los" x1={center(agent.position).x} y1={center(agent.position).y} x2={player.x} y2={player.y} /> : null)}
 
     {state.agents.map((agent) => agent.searchLookTarget ? <SearchLook key={`search-look-${agent.id}`} agent={agent} /> : null)}
+    {state.grenadeEvents.map((grenade) => <GrenadeEvent key={`grenade-${grenade.id}`} grenade={grenade} locale={locale} />)}
     {state.agents.map((agent) => agent.firePulse > 0 && agent.fireTarget ? <line key={`fire-${agent.id}`} className="sim-fire" x1={center(agent.fireOrigin ?? agent.position).x} y1={center(agent.fireOrigin ?? agent.position).y} x2={center(agent.fireTarget).x} y2={center(agent.fireTarget).y} /> : null)}
+    {state.agents.map((agent) => agent.meleePulse > 0 ? <MeleePulse key={`melee-${agent.id}`} agent={agent} /> : null)}
 
     {state.agents.map((agent) => <AgentShape key={agent.id} agent={agent} locale={locale} />)}
     <circle className="sim-player" cx={player.x} cy={player.y} r={9} />
@@ -48,8 +50,8 @@ export function SimulationCanvas({ state, overlays, onSetPlayer, locale }: Props
     <text className="sim-label player-label" x={player.x + 12} y={player.y - 12}>{locale === 'zh-CN' ? '玩家' : 'Player'}</text>
 
     <g className="sim-tactical-hud" transform="translate(12 12)">
-      <rect width={260} height={27} rx={6} />
-      <text x={9} y={17}>{localizedTactic(state.squad.tactic, locale)} · {locale === 'zh-CN' ? '安全枪线' : 'safe lanes'} {state.safeFireLanes} · {locale === 'zh-CN' ? '展开' : 'spread'} {state.squad.spread.toFixed(1)}</text>
+      <rect width={300} height={27} rx={6} />
+      <text x={9} y={17}>{localizedTactic(state.squad.tactic, locale)} · {locale === 'zh-CN' ? '安全枪线' : 'safe lanes'} {state.safeFireLanes} · {locale === 'zh-CN' ? '展开' : 'spread'} {state.squad.spread.toFixed(1)} · {locale === 'zh-CN' ? '投掷' : 'grenades'} {state.grenadeEvents.length}</text>
     </g>
   </svg>;
 }
@@ -97,16 +99,43 @@ function SearchLook({ agent }: { readonly agent: TacticalWizardAgentView }) {
   return <g className="sim-search-look"><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} /><circle cx={to.x} cy={to.y} r={2.5} /></g>;
 }
 
+function GrenadeEvent({ grenade, locale }: { readonly grenade: GrenadeVisual; readonly locale: Locale }) {
+  const from = center(grenade.from);
+  const to = center(grenade.to);
+  const stroke = grenade.kind === 'flash' ? '#f7d76c' : grenade.kind === 'smoke' ? '#9ab4c4' : '#d97c54';
+  const label = grenade.kind === 'flash' ? (locale === 'zh-CN' ? '震' : 'FLASH') : grenade.kind === 'smoke' ? (locale === 'zh-CN' ? '烟' : 'SMOKE') : (locale === 'zh-CN' ? '破' : 'FRAG');
+  const opacity = Math.max(0.18, Math.min(0.72, grenade.remainingFrames / 30));
+  return <g pointerEvents="none" opacity={opacity}>
+    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={stroke} strokeWidth={1.5} strokeDasharray="4 6" />
+    <circle cx={to.x} cy={to.y} r={grenade.radius * CELL} fill="none" stroke={stroke} strokeWidth={1.5} strokeDasharray="7 7" />
+    <circle cx={to.x} cy={to.y} r={5} fill={stroke} fillOpacity={0.22} stroke={stroke} strokeWidth={1.5} />
+    <text x={to.x + 8} y={to.y - 8} fill={stroke} fontSize={9} fontWeight={700}>{label}</text>
+  </g>;
+}
+
+function MeleePulse({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  const p = center(agent.position);
+  const opacity = Math.max(0.25, Math.min(0.85, agent.meleePulse / 8));
+  return <circle cx={p.x} cy={p.y} r={16} fill="none" stroke="#ef9d55" strokeWidth={2} strokeDasharray="3 3" opacity={opacity} pointerEvents="none" />;
+}
+
 function AgentShape({ agent, locale }: { readonly agent: TacticalWizardAgentView; readonly locale: Locale }) {
   const position = center(agent.position);
   const angle = Math.atan2(agent.facing.y, agent.facing.x) * 180 / Math.PI + 90;
   const label = localizedAssetName(agent.id, agent.label, locale);
+  const special = agent.specialAction !== 'none' && agent.specialActionPulse > 0 ? localizedSpecial(agent.specialAction, locale) : null;
   return <g className={`sim-enemy agent-${agent.visualKey} role-${agent.role} cover-${agent.coverState}`} transform={`translate(${position.x} ${position.y})`}>
-    <title>{`${label} · ${agent.task} · ${agent.coverState} · ${agent.selectedIntent}`}</title>
+    <title>{`${label} · ${agent.task} · ${agent.coverState} · ${agent.locomotionMode} · ${agent.buddyRole} · ${agent.opportunityPurpose} · ${agent.selectedIntent}`}</title>
     <g transform={`rotate(${angle})`}><polygon points="0,-10 8,9 0,6 -8,9" /></g>
     <text className="sim-label" x={11} y={-9}>{label} · {shortTask(agent.task)}</text>
-    {agent.fireBlockedByFriend && <text className="sim-fire-blocked" x={11} y={3}>{locale === 'zh-CN' ? '枪线阻挡' : 'NO FIRE'}</text>}
+    {special && <text x={11} y={3} fontSize={8.5} fontWeight={700}>{special}</text>}
+    {agent.fireBlockedByFriend && <text className="sim-fire-blocked" x={11} y={special ? 14 : 3}>{locale === 'zh-CN' ? '枪线阻挡' : 'NO FIRE'}</text>}
   </g>;
+}
+
+function localizedSpecial(action: TacticalWizardAgentView['specialAction'], locale: Locale): string {
+  if (locale !== 'zh-CN') return action.replaceAll('_', ' ').toUpperCase();
+  return { none: '', throw_flash: '震撼弹', throw_frag: '破片弹', throw_smoke: '烟幕', melee: '近战', surprise: '伏击机会' }[action];
 }
 
 function shortTask(task: TacticalWizardAgentView['task']): string {
