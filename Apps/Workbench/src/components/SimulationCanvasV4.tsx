@@ -4,6 +4,7 @@ import { tacticalWizardTestMap, type SimulationOverlaySettings, type SupplyCache
 import { SimulationCanvas as BaseSimulationCanvas } from './SimulationCanvasV3Base';
 
 const CELL = 22;
+const V8_STYLE = `.simulation-canvas-wrap{position:relative;line-height:0}.simulation-canvas-wrap>.simulation-canvas{position:relative;z-index:1}.simulation-v8-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}.sim-supply rect{fill:#17231d;stroke:#8fc19e;stroke-width:1.4}.sim-supply path{fill:none;stroke:#b8d9c1;stroke-width:1.1}.sim-supply text{fill:#c5d8cb;font-size:7.5px;paint-order:stroke;stroke:#091019;stroke-width:2px}.sim-supply-grenade rect{fill:#282217;stroke:#d1b86f}.sim-supply-grenade path{stroke:#e1ca87}.sim-supply-mixed rect{fill:#1d2130;stroke:#9caed9}.sim-supply-mixed path{stroke:#bac7e4}.sim-supply.depleted{opacity:.25}.sim-commander-marker circle{fill:none;stroke:#f1d37b;stroke-width:1.8;stroke-dasharray:3 3}.sim-commander-marker path{fill:#f1d37b;stroke:#091019;stroke-width:1}.sim-commander-marker text{fill:#f3dc94;font-size:8px;font-weight:800;paint-order:stroke;stroke:#091019;stroke-width:2px}.sim-resupply-route line{stroke:#7ec89a;stroke-width:1.8;stroke-dasharray:6 5}.sim-resupply-route circle{fill:none;stroke:#7ec89a;stroke-width:1.8;stroke-dasharray:3 3}.sim-resupply-route text{fill:#9edbb3;font-size:8px;font-weight:700;paint-order:stroke;stroke:#091019;stroke-width:2px}`;
 
 interface Props {
   readonly state: TacticalWizardSimulationState;
@@ -17,6 +18,7 @@ export function SimulationCanvas(props: Props) {
   const width = tacticalWizardTestMap.width * CELL;
   const height = tacticalWizardTestMap.height * CELL;
   return <div className="simulation-canvas-wrap">
+    <style>{V8_STYLE}</style>
     <BaseSimulationCanvas {...props} />
     <svg className="simulation-v8-overlay" viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       {state.supplies.map((supply) => <SupplyMarker key={supply.id} supply={supply} locale={locale} />)}
