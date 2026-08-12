@@ -27,7 +27,7 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [traceHistory, setTraceHistory] = useState<readonly DecisionTrace[]>([]);
-  const [overlays, setOverlays] = useState<SimulationOverlaySettings>({ vision: true, hearing: false, path: true, memory: true, grid: true, cover: true });
+  const [overlays, setOverlays] = useState<SimulationOverlaySettings>({ vision: true, hearing: false, path: false, memory: true, grid: false, cover: true });
   const [endpoint, setEndpoint] = useState('wss://localhost:7443/volition');
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline');
   const [connectionDetail, setConnectionDetail] = useState('Offline Simulation active.');

@@ -45,7 +45,7 @@ export function selectCoverSlot(grid: NavigationGrid, slots: readonly CoverSlot[
 }
 
 /** Selects an exposed but reachable short-range assault position around the threat. */
-export function selectAssaultPosition(grid: NavigationGrid, from: GridPoint, threat: GridPoint, reservedCells: ReadonlySet<string>, sideBias: -1 | 1): GridPoint | null {
+export function selectAssaultPosition(grid: NavigationGrid, from: GridPoint, threat: GridPoint, reservedCells: ReadonlySet<string>, sideBias: number): GridPoint | null {
   const approach = normalize({ x: from.x - threat.x, y: from.y - threat.y });
   const scored: { readonly point: GridPoint; readonly score: number }[] = [];
   for (let y = 0; y < grid.height; y += 1) for (let x = 0; x < grid.width; x += 1) {
@@ -53,7 +53,7 @@ export function selectAssaultPosition(grid: NavigationGrid, from: GridPoint, thr
     const range = distance(point, threat); if (range < 2.5 || range > 5 || !hasLineOfSight(grid, point, threat)) continue;
     const path = findPath(grid, from, point); if (path.length === 0) continue;
     const relative = { x: point.x - threat.x, y: point.y - threat.y }; const lateral = approach.x * relative.y - approach.y * relative.x;
-    const sidePenalty = Math.sign(lateral || sideBias) === sideBias ? 0 : 5;
+    const sidePenalty = Math.sign(lateral || sideBias) === Math.sign(sideBias || 1) ? 0 : 5;
     scored.push({ point, score: Math.max(0, path.length - 1) + Math.abs(range - 3.5) * 1.4 + sidePenalty - Math.abs(lateral) * 0.18 });
   }
   return scored.sort((left, right) => left.score - right.score || left.point.y - right.point.y || left.point.x - right.point.x)[0]?.point ?? null;
