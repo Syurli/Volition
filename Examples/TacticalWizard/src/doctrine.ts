@@ -7,8 +7,8 @@ export interface SquadDoctrineFacts {
   readonly boundingPhase: number;
   readonly visibleMembers: number;
   readonly stalledMembers: number;
-  readonly lostContactTicks: number;
-  readonly maneuverCycle: number;
+  readonly lostContactTicks?: number;
+  readonly maneuverCycle?: number;
 }
 
 export interface SquadDoctrineDecision {
@@ -23,7 +23,9 @@ export interface SquadDoctrineDecision {
  * assault and search-sweep positions into concrete navigation targets.
  */
 export function decideSquadDoctrine(current: SquadTactic, facts: SquadDoctrineFacts): SquadDoctrineDecision {
-  if (facts.lostContactTicks >= 5 && current !== 'sweep' && current !== 'regroup') {
+  const lostContactTicks = facts.lostContactTicks ?? 0;
+  const maneuverCycle = facts.maneuverCycle ?? 0;
+  if (lostContactTicks >= 5 && current !== 'sweep' && current !== 'regroup') {
     return { tactic: 'sweep', reason: 'No member has visual contact; stop charging the Last Known Position and sweep separated sectors instead.', rotateRoles: true };
   }
   if (facts.stalledMembers >= 2 && current !== 'regroup') {
@@ -67,7 +69,7 @@ export function decideSquadDoctrine(current: SquadTactic, facts: SquadDoctrineFa
       return { tactic: current, reason: 'Search separated sectors around the Last Known Position without reading hidden live target coordinates.', rotateRoles: false };
     case 'regroup':
       if (facts.tacticTicks >= 12) {
-        return { tactic: 'bounding', reason: `Spacing recovered for maneuver cycle ${facts.maneuverCycle + 1}; resume pressure with a new role order and opposite flank preference.`, rotateRoles: true };
+        return { tactic: 'bounding', reason: `Spacing recovered for maneuver cycle ${maneuverCycle + 1}; resume pressure with a new role order and opposite flank preference.`, rotateRoles: true };
       }
       return { tactic: current, reason: 'Move away from the close firing orbit, recover spacing and settle into distinct cover sectors.', rotateRoles: false };
   }
