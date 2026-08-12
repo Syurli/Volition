@@ -17,16 +17,19 @@ describe('Tactical Wizard Workbench simulation V4', () => {
     expect(occupiedPositionsAreUnique(state.agents.map((agent) => agent.position))).toBe(true); expect(tacticalWizardTestMap.width).toBeGreaterThanOrEqual(40);
   });
 
-  it('does not abandon the first flank before the flanker reaches its committed tactical target', () => {
+  it('does not time-switch the first flank before the committed maneuver gate is satisfied', () => {
     const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
-    let state = simulation.getState(); let lastFlank = state; let enteredFlank = false; let reachedCrossfire = false;
+    let state = simulation.getState(); let flankTick: number | null = null; let crossfireTick: number | null = null; let crossfireReason = '';
     for (let index = 0; index < 240; index += 1) {
-      state = simulation.step(); if (state.squad.tactic === 'flank') { enteredFlank = true; lastFlank = state; }
-      if (enteredFlank && state.squad.tactic === 'crossfire') { reachedCrossfire = true; break; }
+      state = simulation.step();
+      const transitions = state.runLog.filter((entry) => entry.category === 'squad' && entry.event === 'tactic');
+      const flank = transitions.find((entry) => entry.data.to === 'flank'); const crossfire = transitions.find((entry) => entry.data.to === 'crossfire');
+      if (flank) flankTick = flank.logicalTick;
+      if (crossfire) { crossfireTick = crossfire.logicalTick; crossfireReason = String(crossfire.data.reason ?? ''); break; }
     }
-    expect(enteredFlank).toBe(true); expect(reachedCrossfire).toBe(true);
-    const flanker = lastFlank.agents.find((agent) => agent.role === 'flanker'); expect(flanker?.tacticalTarget).not.toBeNull();
-    expect(Math.hypot(flanker!.position.x - flanker!.tacticalTarget!.x, flanker!.position.y - flanker!.tacticalTarget!.y)).toBeLessThanOrEqual(0.65);
+    expect(flankTick).not.toBeNull(); expect(crossfireTick).not.toBeNull();
+    expect(crossfireTick! - flankTick!).toBeGreaterThanOrEqual(6);
+    expect(crossfireReason).toContain('reached its committed sector');
   });
 
   it('produces a full committed maneuver cycle without rapid one-tick tactic oscillation', () => {
