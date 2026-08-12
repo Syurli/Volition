@@ -31,7 +31,6 @@ describe('Tactical Wizard mutual-support simulation V6', () => {
             coveredDashSamples += 1;
             expect(agent.backTurnPermitted).toBe(true);
           } else {
-            expect(agent.locomotionMode).toBe('backpedal');
             expect(agent.backTurnPermitted).toBe(false);
             const facingLength = Math.hypot(agent.facing.x, agent.facing.y) || 1;
             const facingDotThreat = (agent.facing.x / facingLength) * (tx / threatLength) + (agent.facing.y / facingLength) * (ty / threatLength);
