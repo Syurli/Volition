@@ -93,7 +93,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
 
   constructor() {
     super();
-    const host = this.host();
+    const host = this.v12Host();
     host.pushEvent('V12: rescue security now establishes a protected firing lane and actively suppresses the threat while treatment is in progress.');
     host.log('system', 'simulation', 'Volition Simulation', 'session', 'V12 rescue fire-support contract enabled.', {
       rescueSupportRadius: RESCUE_SUPPORT_RADIUS,
@@ -105,7 +105,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
   override reset(): TacticalWizardSimulationState {
     super.reset();
     this.clearRescueSupport();
-    this.host().pushEvent('V12: rescue fire-support state reset.');
+    this.v12Host().pushEvent('V12: rescue fire-support state reset.');
     return this.getState();
   }
 
@@ -127,7 +127,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
 
   override getState(): TacticalWizardSimulationState {
     const base = super.getState();
-    const plan = this.v10().rescuePlan;
+    const plan = this.v12V10().rescuePlan;
     const coverer = plan?.covererId === null || plan === null
       ? null
       : base.agents.find((agent) => agent.id === plan.covererId) ?? null;
@@ -153,7 +153,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
   }
 
   private prepareRescueSupport(state: TacticalWizardSimulationStateV11): void {
-    const plan = this.v10().rescuePlan;
+    const plan = this.v12V10().rescuePlan;
     if (plan === null || plan.covererId === null) {
       this.clearRescueSupport();
       return;
@@ -189,8 +189,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
       );
       if (selected !== null) {
         this.rescueSupportPosition = selected;
-        this.v11().rescueCoverTarget = { ...selected };
-        this.host().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Rescue security repositioned to a protected fire-support lane.', {
+        this.v12V11().rescueCoverTarget = { ...selected };
+        this.v12Host().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Rescue security repositioned to a protected fire-support lane.', {
           downedId: plan.downedAgentId,
           rescuerId: plan.rescuerId,
           covererId: plan.covererId,
@@ -203,9 +203,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
     }
 
     this.rescueSupportTarget = { ...fireTarget };
-    if (this.rescueSupportPosition !== null) this.v11().rescueCoverTarget = { ...this.rescueSupportPosition };
+    if (this.rescueSupportPosition !== null) this.v12V11().rescueCoverTarget = { ...this.rescueSupportPosition };
 
-    const member = this.host().members.find((entry) => entry.id === plan.covererId);
+    const member = this.v12Host().members.find((entry) => entry.id === plan.covererId);
     if (member === undefined) return;
 
     // Make the rescue-security contract explicit in the Host execution state.
@@ -221,10 +221,10 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
   }
 
   private executeRescueSupportFire(state: TacticalWizardSimulationStateV11): void {
-    const plan = this.v10().rescuePlan;
+    const plan = this.v12V10().rescuePlan;
     if (plan === null || plan.covererId === null || this.rescueSupportPosition === null || this.rescueSupportTarget === null) return;
     const coverer = state.agents.find((agent) => agent.id === plan.covererId);
-    const member = this.host().members.find((entry) => entry.id === plan.covererId);
+    const member = this.v12Host().members.find((entry) => entry.id === plan.covererId);
     if (coverer === undefined || member === undefined || !coverer.alive) return;
 
     const positionReady = distance(coverer.position, this.rescueSupportPosition) <= RESCUE_SUPPORT_ARRIVAL;
@@ -234,11 +234,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
     // If the parent tactical layer already fired this tick, count it as valid
     // rescue support instead of producing a duplicate burst.
     if (member.firePulse > 0) {
-      this.lastRescueSupportFireTick = this.host().logicalTick;
+      this.lastRescueSupportFireTick = this.v12Host().logicalTick;
       return;
     }
 
-    const tick = this.host().logicalTick;
+    const tick = this.v12Host().logicalTick;
     if (this.lastRescueSupportFireTick !== null && tick - this.lastRescueSupportFireTick < RESCUE_SUPPORT_FIRE_INTERVAL_TICKS) return;
 
     member.facing = normalize({
@@ -249,11 +249,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
     const reason = coverer.targetVisible
       ? 'rescue security covering fire'
       : 'rescue security suppression on last-known threat';
-    this.host().tryFire(member, this.rescueSupportTarget, reason);
+    this.v12Host().tryFire(member, this.rescueSupportTarget, reason);
     if (member.firePulse <= beforePulse) return;
 
     this.lastRescueSupportFireTick = tick;
-    this.host().pushEvent(`T${tick}: ${member.label} maintains rescue security with active suppressive fire.`);
+    this.v12Host().pushEvent(`T${tick}: ${member.label} maintains rescue security with active suppressive fire.`);
   }
 
   private clearRescueSupport(): void {
@@ -263,15 +263,15 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV11 {
     this.lastRescueSupportFireTick = null;
   }
 
-  private host(): HostAccess {
+  private v12Host(): HostAccess {
     return this as unknown as HostAccess;
   }
 
-  private v10(): V10Access {
+  private v12V10(): V10Access {
     return this as unknown as V10Access;
   }
 
-  private v11(): V11Access {
+  private v12V11(): V11Access {
     return this as unknown as V11Access;
   }
 }
