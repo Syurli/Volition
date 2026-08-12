@@ -21,7 +21,7 @@ class MemoryTransport implements ProtocolTransport {
 const host: WebHostAdapter = {
   projectId: 'reference',
   instanceId: 'test-instance',
-  getContext: (_agentId, tick) => fixtureContext(tick.logicalTick),
+  getContext: (agentId, tick) => ({ ...fixtureContext(tick.logicalTick), agentId }),
   getStimuli: (_agentId, tick) => fixtureStimuli(tick.logicalTick),
   executeAction: (_agentId: string, action: ActionIntent, _tick: TickContext): ActionResult => ({
     actionId: action.id,
