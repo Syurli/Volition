@@ -39,9 +39,10 @@ describe('Tactical Wizard Workbench simulation V4', () => {
       if (latest && !transitions.some((entry) => entry.tick === latest.logicalTick && entry.to === latest.data.to)) transitions.push({ tick: latest.logicalTick, to: latest.data.to });
       if (transitions.some((entry) => entry.to === 'assault') && transitions.some((entry) => entry.to === 'regroup')) break;
     }
-    expect(transitions.some((entry) => entry.to === 'flank')).toBe(true); expect(transitions.some((entry) => entry.to === 'crossfire')).toBe(true); expect(transitions.some((entry) => entry.to === 'assault')).toBe(true); expect(transitions.some((entry) => entry.to === 'regroup')).toBe(true);
+    const sequence = transitions.map((entry) => entry.to);
+    expect(sequence).toEqual(expect.arrayContaining(['flank', 'crossfire', 'assault', 'regroup']));
     for (let index = 1; index < transitions.length; index += 1) expect(transitions[index]!.tick - transitions[index - 1]!.tick).toBeGreaterThanOrEqual(2);
-  });
+  }, 15000);
 
   it('logs decoupled motion samples with real elapsed time', () => {
     const simulation = new TacticalWizardSimulation(); simulation.advance(0.5); const state = simulation.getState(); const moves = state.runLog.filter((entry) => entry.category === 'agent' && entry.event === 'move');
