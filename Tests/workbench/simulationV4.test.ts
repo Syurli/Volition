@@ -32,15 +32,23 @@ describe('Tactical Wizard Workbench simulation V4', () => {
     expect(crossfireReason).toContain('reached its committed sector');
   });
 
-  it('produces a full committed maneuver cycle without rapid one-tick tactic oscillation', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true); let state = simulation.getState(); const transitions: { tick: number; to: unknown }[] = [];
+  it('resolves a committed maneuver without forcing an unsafe assault or one-tick tactic oscillation', () => {
+    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true); let state = simulation.getState();
+    const transitions: Array<{ tick: number; from: unknown; to: unknown; reason: string }> = [];
     for (let index = 0; index < 320; index += 1) {
       state = simulation.step(); const latest = [...state.runLog].reverse().find((entry) => entry.category === 'squad' && entry.event === 'tactic');
-      if (latest && !transitions.some((entry) => entry.tick === latest.logicalTick && entry.to === latest.data.to)) transitions.push({ tick: latest.logicalTick, to: latest.data.to });
-      if (transitions.some((entry) => entry.to === 'assault') && transitions.some((entry) => entry.to === 'regroup')) break;
+      if (latest && !transitions.some((entry) => entry.tick === latest.logicalTick && entry.to === latest.data.to)) {
+        transitions.push({ tick: latest.logicalTick, from: latest.data.from, to: latest.data.to, reason: String(latest.data.reason ?? '') });
+      }
+      if (transitions.some((entry) => entry.to === 'crossfire') && transitions.some((entry) => entry.from === 'crossfire' && (entry.to === 'assault' || entry.to === 'regroup'))) break;
     }
     const sequence = transitions.map((entry) => entry.to);
-    expect(sequence).toEqual(expect.arrayContaining(['flank', 'crossfire', 'assault', 'regroup']));
+    expect(sequence).toEqual(expect.arrayContaining(['flank', 'crossfire']));
+    const crossfireResolution = transitions.find((entry) => entry.from === 'crossfire' && (entry.to === 'assault' || entry.to === 'regroup'));
+    expect(crossfireResolution).toBeDefined();
+    if (crossfireResolution?.to === 'regroup') {
+      expect(crossfireResolution.reason).toMatch(/could not settle|target state has not changed|physically stalled/i);
+    }
     for (let index = 1; index < transitions.length; index += 1) expect(transitions[index]!.tick - transitions[index - 1]!.tick).toBeGreaterThanOrEqual(2);
   }, 15000);
 
