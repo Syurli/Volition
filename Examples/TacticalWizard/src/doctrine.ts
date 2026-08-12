@@ -74,7 +74,15 @@ export function decideSquadDoctrine(current: SquadTactic, facts: SquadDoctrineFa
         // do not automatically collapse every successful crossfire into the
         // same close assault. Some cycles deliberately cash out the positional
         // gain, rotate exposure, and ask the next bound for a new solution.
-        if (repetitionPressure && facts.tacticTicks >= 8 && (maneuverCycle % 3 === 1 || facts.visibleMembers < 3)) {
+        const shouldRotateWithoutAssault = repetitionPressure && (maneuverCycle % 3 === 1 || facts.visibleMembers < 3);
+        if (shouldRotateWithoutAssault) {
+          if (facts.tacticTicks < 8) {
+            return {
+              tactic: current,
+              reason: 'Repeated static contact: hold the established crossfire for a short confirmation window before rotating exposure; do not let the old assault transition pre-empt the adaptive branch.',
+              rotateRoles: false,
+            };
+          }
           return {
             tactic: 'regroup',
             reason: 'Crossfire is established but the target state has not changed; rotate exposure and rebuild geometry instead of entering another identical assault.',
