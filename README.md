@@ -2,6 +2,8 @@
 
 > **Agent Decision & Behavior Framework**  
 > **A BAIGE Project**
+>
+> https://syurli.github.io/Volition/
 
 **能动 Volition** 是百舸（BAIGE）体系下的跨引擎游戏 Agent 决策与行为框架。它以可移植的数据模型、配置格式与通信协议为中心，以独立浏览器 **Volition Workbench** 承担主要编辑、调试与可视化工作，再通过轻量 Bridge 接入不同游戏运行环境。
 
