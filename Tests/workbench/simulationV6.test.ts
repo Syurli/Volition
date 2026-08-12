@@ -119,6 +119,43 @@ describe('Tactical Wizard mutual-support simulation V6', () => {
     const ticks = [...firstSeenTick.values()].sort((a, b) => a - b);
     for (let index = 1; index < ticks.length; index += 1) expect(ticks[index]! - ticks[index - 1]!).toBeGreaterThanOrEqual(18);
   });
+
+  it('allows only one member to claim an immediate close-pressure melee opportunity', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
+    let state = simulation.getState();
+    for (let index = 0; index < 16; index += 1) state = simulation.step();
+    expect(state.squad.alertState).toBe('active');
+
+    let meleeObserved = false;
+    for (let frame = 0; frame < 180 && !meleeObserved; frame += 1) {
+      const candidates = [...state.agents].sort((left, right) => left.id.localeCompare(right.id, 'en'));
+      let placed = false;
+      for (const agent of candidates) {
+        const facingLength = Math.hypot(agent.facing.x, agent.facing.y) || 1;
+        const fx = agent.facing.x / facingLength;
+        const fy = agent.facing.y / facingLength;
+        const attempts = [
+          { x: agent.position.x + fx * 0.95, y: agent.position.y + fy * 0.95 },
+          { x: agent.position.x + fx * 0.85 - fy * 0.25, y: agent.position.y + fy * 0.85 + fx * 0.25 },
+          { x: agent.position.x + fx * 0.85 + fy * 0.25, y: agent.position.y + fy * 0.85 - fx * 0.25 },
+        ];
+        if (attempts.some((point) => simulation.setPlayerPosition(point))) {
+          placed = true;
+          break;
+        }
+      }
+      expect(placed).toBe(true);
+      state = simulation.advance(1 / 30);
+      const meleeAgents = state.agents.filter((agent) => agent.meleePulse > 0 || agent.specialAction === 'melee');
+      if (meleeAgents.length === 0) continue;
+      expect(meleeAgents).toHaveLength(1);
+      expect(meleeAgents[0]!.opportunityPurpose).toBe('close_pressure');
+      meleeObserved = true;
+    }
+
+    expect(meleeObserved).toBe(true);
+  });
 });
 
 function distance(a: { readonly x: number; readonly y: number }, b: { readonly x: number; readonly y: number }): number {
