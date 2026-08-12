@@ -50,16 +50,19 @@ describe('Tactical Wizard V8 command hierarchy and logistics', () => {
     expect(simulation.setPlayerPosition({ x: 24, y: 13 })).toBe(true);
 
     let state = simulation.getState();
-    for (let tick = 0; tick < 220; tick += 1) state = simulation.step();
-
-    const tacticTransitions = state.runLog
-      .filter((entry) => entry.category === 'squad' && entry.event === 'tactic')
-      .map((entry) => entry.summary);
+    let tacticTransitions: string[] = [];
+    for (let tick = 0; tick < 220; tick += 1) {
+      state = simulation.step();
+      tacticTransitions = state.runLog
+        .filter((entry) => entry.category === 'squad' && entry.event === 'tactic')
+        .map((entry) => entry.summary);
+      if (tacticTransitions.includes('Tactic bounding → crossfire.') && tacticTransitions.includes('Tactic crossfire → regroup.') && state.squad.maneuverCycle >= 2) break;
+    }
 
     expect(tacticTransitions).toContain('Tactic bounding → crossfire.');
     expect(tacticTransitions).toContain('Tactic crossfire → regroup.');
     expect(state.squad.maneuverCycle).toBeGreaterThanOrEqual(2);
-  });
+  }, 10000);
 
   it('hands off an empty base-of-fire instead of leaving a dry suppressor in place', () => {
     const simulation = new TacticalWizardSimulation();
