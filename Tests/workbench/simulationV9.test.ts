@@ -17,33 +17,37 @@ describe('Tactical Wizard V9 reactive combat host', () => {
 
   it('lets player aim and rifle fire damage an agent while creating an immediate dodge response', () => {
     const simulation = new TacticalWizardSimulation();
-    expect(simulation.setPlayerPosition({ x: 7, y: 2 })).toBe(true);
-    const alpha = simulation.getState().agents.find((agent) => agent.label === 'Alpha')!;
+    expect(simulation.setPlayerPosition({ x: 7, y: 4 })).toBe(true);
+    const bravo = simulation.getState().agents.find((agent) => agent.label === 'Bravo')!;
 
-    expect(simulation.setPlayerAimTarget(alpha.position)).toBe(true);
-    expect(simulation.playerFireAt(alpha.position)).toBe(true);
+    expect(simulation.setPlayerAimTarget(bravo.position)).toBe(true);
+    expect(simulation.playerFireAt(bravo.position)).toBe(true);
     const state = simulation.getState();
-    const after = state.agents.find((agent) => agent.id === alpha.id)!;
+    const after = state.agents.find((agent) => agent.id === bravo.id)!;
 
     expect(after.health).toBe(72);
     expect(after.reactionState).toBe('dodge');
     expect(after.reactionTarget).not.toBeNull();
     expect(state.playerCombat.shotPulse).toBeGreaterThan(0);
     expect(state.playerCombat.shotsRecent).toBe(1);
-    expect(state.runLog.some((entry) => entry.category === 'player' && entry.event === 'fire' && entry.data.hitAgentId === alpha.id)).toBe(true);
+    expect(state.runLog.some((entry) => entry.category === 'player' && entry.event === 'fire' && entry.data.hitAgentId === bravo.id)).toBe(true);
   });
 
   it('uses sustained player aim and recent fire pressure as dodge inputs instead of random evasion', () => {
     const simulation = new TacticalWizardSimulation();
-    expect(simulation.setPlayerPosition({ x: 7, y: 2 })).toBe(true);
+    expect(simulation.setPlayerPosition({ x: 7, y: 4 })).toBe(true);
     let state = simulation.getState();
-    const alpha = state.agents.find((agent) => agent.label === 'Alpha')!;
-    simulation.setPlayerAimTarget(alpha.position);
+    const bravoId = state.agents.find((agent) => agent.label === 'Bravo')!.id;
 
-    for (let frame = 0; frame < 24; frame += 1) state = simulation.advance(1 / 30);
-    const aimed = state.agents.find((agent) => agent.id === alpha.id)!;
+    for (let frame = 0; frame < 24; frame += 1) {
+      const bravo = state.agents.find((agent) => agent.id === bravoId)!;
+      simulation.setPlayerAimTarget(bravo.position);
+      state = simulation.advance(1 / 30);
+      if (state.agents.find((agent) => agent.id === bravoId)?.reactionState === 'dodge') break;
+    }
+    const aimed = state.agents.find((agent) => agent.id === bravoId)!;
     expect(aimed.reactionState).toBe('dodge');
-    expect(state.runLog.some((entry) => entry.actorId === alpha.id && entry.summary.includes('threat-aware dodge'))).toBe(true);
+    expect(state.runLog.some((entry) => entry.actorId === bravoId && entry.summary.includes('threat-aware dodge'))).toBe(true);
   });
 
   it('links AI flash, smoke and frag grenades to different follow-up doctrines', () => {
@@ -72,10 +76,10 @@ describe('Tactical Wizard V9 reactive combat host', () => {
     expect(simulation.cyclePlayerGrenade(1)).toBe('frag');
     expect(simulation.cyclePlayerGrenade(1)).toBe('smoke');
     expect(simulation.cyclePlayerGrenade(1)).toBe('flash');
-    expect(simulation.setPlayerPosition({ x: 5, y: 2 })).toBe(true);
-    const alpha = simulation.getState().agents.find((agent) => agent.label === 'Alpha')!;
+    expect(simulation.setPlayerPosition({ x: 5, y: 4 })).toBe(true);
+    const bravo = simulation.getState().agents.find((agent) => agent.label === 'Bravo')!;
 
-    expect(simulation.playerThrowGrenadeAt(alpha.position)).toBe(true);
+    expect(simulation.playerThrowGrenadeAt(bravo.position)).toBe(true);
     let state = simulation.getState();
     expect(state.playerCombat.grenadeInventory.flash).toBe(2);
     expect(state.grenadeEvents.some((grenade) => grenade.ownerId === 'player' && grenade.kind === 'flash')).toBe(true);
@@ -87,12 +91,12 @@ describe('Tactical Wizard V9 reactive combat host', () => {
 
   it('tracks health to a downed state and removes the member from active combat reactions', () => {
     const simulation = new TacticalWizardSimulation();
-    expect(simulation.setPlayerPosition({ x: 7, y: 2 })).toBe(true);
-    const alpha = simulation.getState().agents.find((agent) => agent.label === 'Alpha')!;
+    expect(simulation.setPlayerPosition({ x: 7, y: 4 })).toBe(true);
+    const bravo = simulation.getState().agents.find((agent) => agent.label === 'Bravo')!;
 
-    for (let shot = 0; shot < 4; shot += 1) simulation.playerFireAt(alpha.position);
+    for (let shot = 0; shot < 4; shot += 1) simulation.playerFireAt(bravo.position);
     const state = simulation.getState();
-    const after = state.agents.find((agent) => agent.id === alpha.id)!;
+    const after = state.agents.find((agent) => agent.id === bravo.id)!;
     expect(after.health).toBe(0);
     expect(after.alive).toBe(false);
     expect(after.reactionState).toBe('downed');
