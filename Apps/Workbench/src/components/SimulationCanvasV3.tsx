@@ -1,44 +1,127 @@
 import type { MouseEvent } from 'react';
 import type { Locale } from '../i18n';
-import { localizedAssetName, localizedIntent, localizedRole, localizedTactic } from '../assetLocalization';
-import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV3';
+import { localizedAssetName, localizedTactic } from '../assetLocalization';
+import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
 import type { GridPoint } from '../simulation/navigation';
 
 const CELL = 22;
 interface Props { readonly state: TacticalWizardSimulationState; readonly overlays: SimulationOverlaySettings; readonly onSetPlayer: (point: GridPoint) => void; readonly locale: Locale; }
 
 export function SimulationCanvas({ state, overlays, onSetPlayer, locale }: Props) {
-  const width = tacticalWizardTestMap.width * CELL; const height = tacticalWizardTestMap.height * CELL; const player = center(state.player);
-  const handleClick = (event: MouseEvent<SVGSVGElement>) => { const rect = event.currentTarget.getBoundingClientRect(); const x = Math.floor((event.clientX - rect.left) / rect.width * tacticalWizardTestMap.width); const y = Math.floor((event.clientY - rect.top) / rect.height * tacticalWizardTestMap.height); onSetPlayer({ x, y }); };
-  return <svg className="simulation-canvas" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tactical Wizard squad AI simulation test map" onClick={handleClick}>
+  const width = tacticalWizardTestMap.width * CELL;
+  const height = tacticalWizardTestMap.height * CELL;
+  const player = center(state.player);
+  const handleClick = (event: MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.floor((event.clientX - rect.left) / rect.width * tacticalWizardTestMap.width);
+    const y = Math.floor((event.clientY - rect.top) / rect.height * tacticalWizardTestMap.height);
+    onSetPlayer({ x, y });
+  };
+
+  return <svg className="simulation-canvas tactical-observer" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tactical Wizard squad AI tactical observer" onClick={handleClick}>
     <rect className="sim-floor" width={width} height={height} />
+
     {overlays.grid && Array.from({ length: tacticalWizardTestMap.width + 1 }, (_, x) => <line key={`gx-${x}`} className="sim-grid-line" x1={x * CELL} y1={0} x2={x * CELL} y2={height} />)}
     {overlays.grid && Array.from({ length: tacticalWizardTestMap.height + 1 }, (_, y) => <line key={`gy-${y}`} className="sim-grid-line" x1={0} y1={y * CELL} x2={width} y2={y * CELL} />)}
+
     {state.agents.map((agent) => overlays.hearing ? <circle key={`hearing-${agent.id}`} className="sim-hearing" cx={center(agent.position).x} cy={center(agent.position).y} r={state.hearingRadius * CELL} /> : null)}
-    {state.agents.map((agent) => overlays.vision ? <path key={`vision-${agent.id}`} className="sim-vision" d={visionCone(agent, state.visionRange, state.visionFovDegrees)} /> : null)}
+    {state.agents.map((agent) => overlays.vision ? <VisionOverlay key={`vision-${agent.id}`} agent={agent} range={state.visionRange} fovDegrees={state.visionFovDegrees} /> : null)}
+
     {tacticalWizardTestMap.blocked.map((cell) => <rect key={`b-${cell.x}-${cell.y}`} className="sim-obstacle" x={cell.x * CELL + 1} y={cell.y * CELL + 1} width={CELL - 2} height={CELL - 2} rx={3} />)}
-    {state.patrolPoints.map((point, index) => { const p = center(point); return <g key={`patrol-${index}`} className={index === state.patrolIndex ? 'sim-patrol active' : 'sim-patrol'}><rect x={p.x - 5} y={p.y - 5} width={10} height={10} transform={`rotate(45 ${p.x} ${p.y})`} /><text x={p.x + 8} y={p.y - 7}>P{index + 1}</text></g>; })}
-    {overlays.cover && state.coverSlots.map((slot) => { const p = center(slot.position); const peek = center(slot.peekPosition); return <g key={slot.id} className="sim-cover-slot"><circle cx={p.x} cy={p.y} r={3.5} /><line x1={p.x} y1={p.y} x2={peek.x} y2={peek.y} /></g>; })}
-    {state.agents.map((agent) => overlays.path && agent.path.length > 0 ? <polyline key={`path-${agent.id}`} className={`sim-path agent-${agent.visualKey}`} points={agent.path.map((point) => `${center(point).x},${center(point).y}`).join(' ')} /> : null)}
-    {overlays.memory && state.squad.sharedLastKnownPosition && (() => { const p = center(state.squad.sharedLastKnownPosition); return <g className="sim-memory squad-memory"><line x1={p.x - 8} y1={p.y - 8} x2={p.x + 8} y2={p.y + 8} /><line x1={p.x + 8} y1={p.y - 8} x2={p.x - 8} y2={p.y + 8} /><text x={p.x + 10} y={p.y + 4}>{locale === 'zh-CN' ? '小队 LKP' : 'SQUAD LKP'}</text></g>; })()}
-    {overlays.cover && state.agents.map((agent) => agent.tacticalTarget ? <TacticalTarget key={`target-${agent.id}`} agent={agent} locale={locale} /> : null)}
-    {state.agents.map((agent) => agent.targetVisible ? <line key={`los-${agent.id}`} className={`sim-los agent-${agent.visualKey}`} x1={center(agent.position).x} y1={center(agent.position).y} x2={player.x} y2={player.y} /> : null)}
-    {state.agents.map((agent) => agent.firePulse > 0 && agent.fireTarget ? <line key={`fire-${agent.id}`} className={`sim-fire agent-${agent.visualKey}`} x1={center(agent.position).x} y1={center(agent.position).y} x2={center(agent.fireTarget).x} y2={center(agent.fireTarget).y} /> : null)}
-    {state.agents.map((agent) => agent.searchPulse > 0 ? <circle key={`search-${agent.id}`} className={`sim-search agent-${agent.visualKey}`} cx={center(agent.position).x} cy={center(agent.position).y} r={16 + agent.searchPulse * 3} /> : null)}
+
+    {overlays.path && state.agents.map((agent) => agent.path.length > 1 ? <polyline key={`path-${agent.id}`} className={`sim-path agent-${agent.visualKey}`} points={agent.path.map((point) => `${center(point).x},${center(point).y}`).join(' ')} /> : null)}
+
+    {overlays.memory && state.squad.sharedLastKnownPosition && <MemoryMarker point={state.squad.sharedLastKnownPosition} locale={locale} />}
+
+    {overlays.cover && state.agents.map((agent) => agent.coverTarget ? <AssignedCover key={`cover-${agent.id}`} agent={agent} /> : null)}
+    {state.agents.map((agent) => agent.tacticalTarget ? <TacticalTarget key={`target-${agent.id}`} agent={agent} /> : null)}
+
+    {state.fireLanes.map((lane) => <line key={`lane-${lane.ownerId}`} className="sim-fire-lane" x1={center(lane.from).x} y1={center(lane.from).y} x2={center(lane.to).x} y2={center(lane.to).y} />)}
+    {state.agents.map((agent) => agent.targetVisible ? <line key={`los-${agent.id}`} className="sim-los" x1={center(agent.position).x} y1={center(agent.position).y} x2={player.x} y2={player.y} /> : null)}
+
+    {state.agents.map((agent) => agent.searchLookTarget ? <SearchLook key={`search-look-${agent.id}`} agent={agent} /> : null)}
+    {state.agents.map((agent) => agent.firePulse > 0 && agent.fireTarget ? <line key={`fire-${agent.id}`} className="sim-fire" x1={center(agent.fireOrigin ?? agent.position).x} y1={center(agent.fireOrigin ?? agent.position).y} x2={center(agent.fireTarget).x} y2={center(agent.fireTarget).y} /> : null)}
+
     {state.agents.map((agent) => <AgentShape key={agent.id} agent={agent} locale={locale} />)}
-    <circle className="sim-player" cx={player.x} cy={player.y} r={9} /><circle className="sim-player-core" cx={player.x} cy={player.y} r={2.5} /><text className="sim-label player-label" x={player.x + 12} y={player.y - 12}>{locale === 'zh-CN' ? '玩家' : 'Player'}</text>
-    <text className="sim-squad-banner" x={12} y={20}>{locale === 'zh-CN' ? '小队' : 'Squad'}: {state.squad.alertState} · {localizedTactic(state.squad.tactic, locale)} · cycle {state.squad.maneuverCycle}</text>
+    <circle className="sim-player" cx={player.x} cy={player.y} r={9} />
+    <circle className="sim-player-core" cx={player.x} cy={player.y} r={2.5} />
+    <text className="sim-label player-label" x={player.x + 12} y={player.y - 12}>{locale === 'zh-CN' ? '玩家' : 'Player'}</text>
+
+    <g className="sim-tactical-hud" transform="translate(12 12)">
+      <rect width={260} height={27} rx={6} />
+      <text x={9} y={17}>{localizedTactic(state.squad.tactic, locale)} · {locale === 'zh-CN' ? '安全枪线' : 'safe lanes'} {state.safeFireLanes} · {locale === 'zh-CN' ? '展开' : 'spread'} {state.squad.spread.toFixed(1)}</text>
+    </g>
   </svg>;
 }
 
+function VisionOverlay({ agent, range, fovDegrees }: { readonly agent: TacticalWizardAgentView; readonly range: number; readonly fovDegrees: number }) {
+  const origin = center(agent.position);
+  const angle = Math.atan2(agent.facing.y, agent.facing.x) * 180 / Math.PI;
+  const radius = range * CELL;
+  const half = fovDegrees * Math.PI / 360;
+  const a = { x: Math.cos(-half) * radius, y: Math.sin(-half) * radius };
+  const b = { x: Math.cos(half) * radius, y: Math.sin(half) * radius };
+  const d = `M 0 0 L ${a.x} ${a.y} A ${radius} ${radius} 0 0 1 ${b.x} ${b.y}`;
+  return <g className="sim-vision-group" style={{ transform: `translate(${origin.x}px, ${origin.y}px) rotate(${angle}deg)` }}><path className="sim-vision" d={d} /></g>;
+}
+
+function MemoryMarker({ point, locale }: { readonly point: GridPoint; readonly locale: Locale }) {
+  const p = center(point);
+  return <g className="sim-memory squad-memory"><circle cx={p.x} cy={p.y} r={8} /><line x1={p.x - 5} y1={p.y - 5} x2={p.x + 5} y2={p.y + 5} /><line x1={p.x + 5} y1={p.y - 5} x2={p.x - 5} y2={p.y + 5} /><text x={p.x + 11} y={p.y + 3}>{locale === 'zh-CN' ? '最后确认' : 'LKP'}</text></g>;
+}
+
+function AssignedCover({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  if (agent.coverTarget === null) return null;
+  const cover = center(agent.coverTarget);
+  const peek = agent.peekTarget === null ? null : center(agent.peekTarget);
+  return <g className={`sim-assigned-cover cover-${agent.coverState} agent-${agent.visualKey}`}>
+    <rect x={cover.x - 6} y={cover.y - 6} width={12} height={12} rx={3} />
+    {peek && <><line x1={cover.x} y1={cover.y} x2={peek.x} y2={peek.y} /><circle cx={peek.x} cy={peek.y} r={3} /></>}
+  </g>;
+}
+
+function TacticalTarget({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  if (agent.tacticalTarget === null) return null;
+  const target = center(agent.tacticalTarget);
+  const from = center(agent.position);
+  return <g className={`sim-task-target task-${agent.task}`}>
+    <line x1={from.x} y1={from.y} x2={target.x} y2={target.y} />
+    <circle cx={target.x} cy={target.y} r={4.5} />
+  </g>;
+}
+
+function SearchLook({ agent }: { readonly agent: TacticalWizardAgentView }) {
+  if (agent.searchLookTarget === null) return null;
+  const from = center(agent.position);
+  const to = center(agent.searchLookTarget);
+  return <g className="sim-search-look"><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} /><circle cx={to.x} cy={to.y} r={2.5} /></g>;
+}
+
 function AgentShape({ agent, locale }: { readonly agent: TacticalWizardAgentView; readonly locale: Locale }) {
-  const position = center(agent.position); const angle = Math.atan2(agent.facing.y, agent.facing.x) * 180 / Math.PI + 90;
+  const position = center(agent.position);
+  const angle = Math.atan2(agent.facing.y, agent.facing.x) * 180 / Math.PI + 90;
   const label = localizedAssetName(agent.id, agent.label, locale);
-  return <g className={`sim-enemy agent-${agent.visualKey} role-${agent.role}`} transform={`translate(${position.x} ${position.y})`}><g transform={`rotate(${angle})`}><polygon points="0,-10 8,9 0,6 -8,9" /></g><text className="sim-label" x={11} y={-10}>{label} · {localizedRole(agent.role, locale)} · {localizedIntent(agent.selectedIntent, locale)}</text></g>;
+  return <g className={`sim-enemy agent-${agent.visualKey} role-${agent.role} cover-${agent.coverState}`} transform={`translate(${position.x} ${position.y})`}>
+    <title>{`${label} · ${agent.task} · ${agent.coverState} · ${agent.selectedIntent}`}</title>
+    <g transform={`rotate(${angle})`}><polygon points="0,-10 8,9 0,6 -8,9" /></g>
+    <text className="sim-label" x={11} y={-9}>{label} · {shortTask(agent.task)}</text>
+    {agent.fireBlockedByFriend && <text className="sim-fire-blocked" x={11} y={3}>{locale === 'zh-CN' ? '枪线阻挡' : 'NO FIRE'}</text>}
+  </g>;
 }
-function TacticalTarget({ agent, locale }: { readonly agent: TacticalWizardAgentView; readonly locale: Locale }) {
-  if (agent.tacticalTarget === null) return null; const target = center(agent.tacticalTarget); const agentPoint = center(agent.position);
-  return <g className={`sim-cover-assignment agent-${agent.visualKey} role-${agent.role}`}><line x1={agentPoint.x} y1={agentPoint.y} x2={target.x} y2={target.y} /><circle cx={target.x} cy={target.y} r={7} /><text x={target.x + 9} y={target.y + 3}>{localizedRole(agent.role, locale)}</text></g>;
+
+function shortTask(task: TacticalWizardAgentView['task']): string {
+  switch (task) {
+    case 'suppress': return 'SUP';
+    case 'bound_to_cover': return 'BOUND';
+    case 'hold_cover': return 'HOLD';
+    case 'flank_to_cover': return 'FLANK';
+    case 'crossfire': return 'X-FIRE';
+    case 'assault': return 'ASSAULT';
+    case 'search_sector': return 'SEARCH';
+    case 'overwatch': return 'WATCH';
+    case 'regroup': return 'REGROUP';
+    default: return 'PATROL';
+  }
 }
-function visionCone(agent: TacticalWizardAgentView, range: number, fovDegrees: number): string { const origin = center(agent.position); const facingAngle = Math.atan2(agent.facing.y, agent.facing.x); const half = fovDegrees * Math.PI / 360; const radius = range * CELL; const a = { x: origin.x + Math.cos(facingAngle - half) * radius, y: origin.y + Math.sin(facingAngle - half) * radius }; const b = { x: origin.x + Math.cos(facingAngle + half) * radius, y: origin.y + Math.sin(facingAngle + half) * radius }; return `M ${origin.x} ${origin.y} L ${a.x} ${a.y} A ${radius} ${radius} 0 0 1 ${b.x} ${b.y} Z`; }
+
 function center(point: GridPoint) { return { x: point.x * CELL + CELL / 2, y: point.y * CELL + CELL / 2 }; }
