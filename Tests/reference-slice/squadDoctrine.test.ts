@@ -35,6 +35,13 @@ describe('Tactical Wizard squad doctrine', () => {
     expect(fromBounding.tactic).toBe('crossfire');
     expect(fromBounding.reason).toContain('Repeated static contact');
 
+    // The old crossfire -> assault rule becomes valid at tick 6. The adaptive
+    // branch must explicitly hold crossfire through that window or the legacy
+    // transition will pre-empt the anti-loop behavior before tick 8.
+    const confirmationWindow = decideSquadDoctrine('crossfire', { ...repeated, tacticTicks: 6 });
+    expect(confirmationWindow.tactic).toBe('crossfire');
+    expect(confirmationWindow.reason).toContain('confirmation window');
+
     const fromCrossfire = decideSquadDoctrine('crossfire', repeated);
     expect(fromCrossfire.tactic).toBe('regroup');
     expect(fromCrossfire.reason).toContain('target state has not changed');
