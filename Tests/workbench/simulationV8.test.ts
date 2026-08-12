@@ -35,6 +35,26 @@ describe('Tactical Wizard V8 command hierarchy and logistics', () => {
     expect(state.agents.filter((agent) => agent.commandRank === 'subordinate' && agent.role === 'crossfire')).toHaveLength(2);
   });
 
+  it('does not replay the same full maneuver choreography against a stationary visible target', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setPlayerPosition({ x: 24, y: 13 })).toBe(true);
+
+    let state = simulation.getState();
+    for (let tick = 0; tick < 220; tick += 1) state = simulation.step();
+
+    const tacticTransitions = state.runLog
+      .filter((entry) => entry.category === 'squad' && entry.event === 'tactic')
+      .map((entry) => entry.summary);
+
+    // The uploaded regression log used to repeat the exact
+    // bounding -> flank -> crossfire -> assault -> regroup chain. Once the
+    // engagement has remained static for a full cycle, V8 should exercise at
+    // least one adaptive shortcut instead of replaying that choreography.
+    expect(tacticTransitions).toContain('Tactic bounding → crossfire.');
+    expect(tacticTransitions).toContain('Tactic crossfire → regroup.');
+    expect(state.squad.maneuverCycle).toBeGreaterThanOrEqual(2);
+  });
+
   it('detaches one subordinate at a time to refill ammo and grenades, then returns it to tactical control', () => {
     const simulation = new TacticalWizardSimulation();
     const bravoId = 'twr:rifle-squad:bravo';
