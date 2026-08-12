@@ -1,0 +1,88 @@
+.simulation-workspace-shell{
+  height:calc(100dvh - 142px);
+  min-height:610px;
+  display:grid;
+  grid-template-rows:72px 158px minmax(0,1fr);
+  gap:10px;
+  overflow:hidden;
+}
+.simulation-workspace-shell>.player-combat-panel,
+.simulation-workspace-shell>.command-equipment-panel{min-height:0;overflow:hidden}
+.simulation-workspace-shell>.player-combat-panel{height:72px}
+.simulation-workspace-shell>.command-equipment-panel{height:158px}
+.simulation-workspace-shell .command-equipment-panel .equipment-strip{min-height:0;height:104px}
+.simulation-workspace-shell .command-equipment-panel .equipment-agent{
+  min-height:0;
+  height:104px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+}
+.simulation-workspace-shell .command-equipment-panel .supply-summary{display:none}
+.simulation-workspace-shell .simulation-page{
+  min-height:0;
+  height:100%;
+  grid-template-rows:auto minmax(0,1fr);
+  overflow:hidden;
+}
+.simulation-workspace-shell .simulation-layout{
+  min-height:0;
+  height:100%;
+  align-items:stretch;
+}
+.simulation-workspace-shell .simulation-stage{
+  min-height:0;
+  height:100%;
+  display:grid;
+  grid-template-rows:minmax(0,1fr) auto;
+  overflow:hidden;
+}
+.simulation-workspace-shell .simulation-v10-wrap,
+.simulation-workspace-shell .simulation-canvas-wrap{
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+}
+.simulation-workspace-shell .simulation-canvas{
+  width:100%;
+  height:100%;
+  max-height:none;
+}
+.simulation-workspace-shell .simulation-sidebar{
+  min-height:0;
+  height:100%;
+  max-height:100%;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  align-content:start;
+  padding-right:4px;
+}
+.simulation-workspace-shell .event-list{max-height:190px}
+
+.simulation-v10-wrap{position:relative;line-height:0}
+.simulation-v10-wrap>.simulation-canvas-wrap{position:relative;z-index:1}
+.simulation-v10-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.sim-med-cache circle{fill:#10231b;stroke:#79c99c;stroke-width:1.2}
+.sim-med-cache path{stroke:#b8efcc;stroke-width:1.5;stroke-linecap:round}
+.sim-med-cache text{fill:#b8efcc;font-size:7px;font-weight:800;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-rescue-link line{stroke:#7fc69b;stroke-width:1.8;stroke-dasharray:5 4}
+.sim-rescue-link circle{fill:none;stroke:#7fc69b;stroke-width:1.5;stroke-dasharray:3 3}
+.sim-rescue-link text{fill:#a9e0bd;font-size:8px;font-weight:800;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-rescue-cover line{stroke:#e2c477;stroke-width:1.4;stroke-dasharray:6 4}
+.sim-rescue-cover text{fill:#edd58e;font-size:7.5px;font-weight:800;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-recovery-banner rect{fill:#091019;fill-opacity:.93;stroke:#70b98e;stroke-width:1}
+.sim-recovery-banner text{fill:#a9dfbc;font-size:8px;font-weight:800}
+
+@media(max-width:1180px){
+  .simulation-workspace-shell{height:auto;min-height:0;display:grid;grid-template-rows:auto auto auto;overflow:visible}
+  .simulation-workspace-shell>.player-combat-panel,
+  .simulation-workspace-shell>.command-equipment-panel{height:auto;max-height:none;overflow:visible}
+  .simulation-workspace-shell .command-equipment-panel .equipment-strip{height:auto}
+  .simulation-workspace-shell .command-equipment-panel .equipment-agent{height:auto;overflow:visible}
+  .simulation-workspace-shell .simulation-page{height:auto;overflow:visible}
+  .simulation-workspace-shell .simulation-layout{height:auto}
+  .simulation-workspace-shell .simulation-stage{height:auto;display:block}
+  .simulation-workspace-shell .simulation-canvas{height:auto;max-height:calc(100vh - 190px)}
+  .simulation-workspace-shell .simulation-sidebar{height:auto;max-height:560px}
+}
