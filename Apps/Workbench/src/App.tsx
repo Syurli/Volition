@@ -7,11 +7,13 @@ import { ProjectHub, OverviewPage } from './pages/ProjectPages';
 import { DesignPage } from './pages/DesignPageV2';
 import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePagesV3';
 import { RunLogPage } from './pages/RunLogPage';
-import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV3';
+import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV4';
 import { EMPTY_LIVE_TELEMETRY, WorkbenchWebSocketConnection, reduceLiveTelemetry, type ConnectionState, type LiveTelemetryState, validateLiveEndpoint } from './connection';
 
 type PageId = 'projects' | 'overview' | 'design' | 'simulation' | 'debug' | 'log' | 'visualization' | 'connection';
 const connection = new WorkbenchWebSocketConnection();
+const PLAYBACK_HZ = 30;
+const PLAYBACK_FRAME_SECONDS = 1 / PLAYBACK_HZ;
 
 export function App() {
   const [locale, setLocale] = useState<Locale>(() => loadLocale());
@@ -33,15 +35,18 @@ export function App() {
   const [liveTelemetry, setLiveTelemetry] = useState<LiveTelemetryState>(EMPTY_LIVE_TELEMETRY);
   const heldDirections = useRef<string[]>([]);
 
-  const step = () => {
-    const next = simulationRef.current.step(); setSimulation(next);
-    for (const trace of next.latestTraces) setTraceHistory((history) => appendTrace(history, trace));
-  };
+  const collectTraces = (next: TacticalWizardSimulationState) => { for (const trace of next.latestTraces) setTraceHistory((history) => appendTrace(history, trace)); };
+  const step = () => { const next = simulationRef.current.step(); setSimulation(next); collectTraces(next); };
   const reset = () => { setPlaying(false); setTraceHistory([]); setSimulation(simulationRef.current.reset()); };
 
   useEffect(() => {
     if (!playing) return;
-    const timer = window.setInterval(step, Math.max(60, 250 / speed));
+    const timer = window.setInterval(() => {
+      const beforeTick = simulationRef.current.getState().logicalTick;
+      const next = simulationRef.current.advance(PLAYBACK_FRAME_SECONDS * speed);
+      setSimulation(next);
+      if (next.logicalTick !== beforeTick) collectTraces(next);
+    }, 1000 / PLAYBACK_HZ);
     return () => window.clearInterval(timer);
   }, [playing, speed]);
 
@@ -55,9 +60,10 @@ export function App() {
     const keyUp = (event: KeyboardEvent) => { const direction = normalizeDirectionKey(event.key); if (direction !== null) heldDirections.current = heldDirections.current.filter((key) => key !== direction); };
     const blur = () => { heldDirections.current = []; };
     const movementTimer = window.setInterval(() => {
-      if (page !== 'simulation') return; const direction = heldDirections.current.at(-1); if (direction === undefined) return;
+      if (page !== 'simulation') return;
+      const direction = heldDirections.current.at(-1); if (direction === undefined) return;
       const [dx, dy] = directionDelta(direction); if (simulationRef.current.nudgePlayer(dx, dy)) setSimulation(simulationRef.current.getState());
-    }, 55);
+    }, 1000 / PLAYBACK_HZ);
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur);
     return () => { window.clearInterval(movementTimer); heldDirections.current = []; window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); };
   }, [page]);
@@ -83,7 +89,6 @@ export function App() {
     {page === 'connection' && <ConnectionPage endpoint={endpoint} setEndpoint={setEndpoint} connectionState={connectionState} connectionDetail={connectionDetail} liveMessages={liveMessages} liveTelemetry={liveTelemetry} onConnect={connect} onDisconnect={disconnect} />}
   </main></div>;
 }
-
 function Nav({ id, current, setPage, icon, label }: { readonly id: PageId; readonly current: PageId; readonly setPage: (id: PageId) => void; readonly icon: string; readonly label: string }) { return <button className={current === id ? 'nav-item active' : 'nav-item'} onClick={() => setPage(id)}><span>{icon}</span><span>{label}</span></button>; }
 function pageLabel(page: PageId): MessageKey { return page === 'projects' ? 'projectHub' : page; }
 function appendTrace(history: readonly DecisionTrace[], trace: DecisionTrace): readonly DecisionTrace[] { return [...history.filter((entry) => entry.agentId !== trace.agentId || entry.logicalTick !== trace.logicalTick), trace].slice(-360); }
