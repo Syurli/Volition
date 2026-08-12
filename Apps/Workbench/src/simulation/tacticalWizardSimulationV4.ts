@@ -1,1 +1,1 @@
-export * from './tacticalWizardSimulationV10';
+export * from './tacticalWizardSimulationV11';
