@@ -21,7 +21,7 @@ class MemoryTransport implements ProtocolTransport {
 const host: WebHostAdapter = {
   projectId: 'reference',
   instanceId: 'test-instance',
-  getContext: (_agentId, tick) => fixtureContext(tick.logicalTick),
+  getContext: (agentId, tick) => ({ ...fixtureContext(tick.logicalTick), agentId }),
   getStimuli: (_agentId, tick) => fixtureStimuli(tick.logicalTick),
   executeAction: (_agentId: string, action: ActionIntent, _tick: TickContext): ActionResult => ({
     actionId: action.id,
@@ -31,13 +31,17 @@ const host: WebHostAdapter = {
 };
 
 describe('generic Web Bridge', () => {
-  it('loads versioned portable config while runtime construction remains injected', async () => {
+  it('loads every agent from a versioned portable config while runtime construction remains injected', async () => {
     const bridge = new VolitionWebBridge(host, { telemetryEnabled: false });
+    const factoryIds: string[] = [];
     const loaded = bridge.loadProjectConfig(tacticalWizardProjectConfig, (definition) => {
-      expect(definition.id).toBe(TACTICAL_WIZARD_AGENT_ID);
-      return createTacticalWizardReferenceRuntime();
+      factoryIds.push(definition.id);
+      return createTacticalWizardReferenceRuntime(definition.id);
     });
-    expect(loaded).toEqual([TACTICAL_WIZARD_AGENT_ID]);
+    const expectedIds = tacticalWizardProjectConfig.agents.map((definition) => definition.id);
+    expect(factoryIds).toEqual(expectedIds);
+    expect(loaded).toEqual(expectedIds);
+    expect(loaded).toContain(TACTICAL_WIZARD_AGENT_ID);
     await bridge.tick({ logicalTick: 0, deltaSeconds: 0, seed: 42 });
   });
 
