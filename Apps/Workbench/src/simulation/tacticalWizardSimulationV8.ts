@@ -147,7 +147,6 @@ const SUPPLY_COUNT = 8;
 const SUPPLY_PICKUP_RADIUS = 0.72;
 const ACTIVE_RESUPPLY_MAX_PATH = 30;
 const COMMANDER_STALE_NO_PICTURE_SECONDS = 5;
-const COMMANDER_STALE_HARD_SECONDS = 8;
 const SUPPORT_HANDOFF_COOLDOWN_TICKS = 10;
 
 /**
@@ -365,8 +364,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
       return originalTryGrenade(member);
     };
 
-    // Do not force Alpha back into the suppressor slot. The commander is a
-    // meta-level command identity; V7's proven role rotation remains intact.
+    // Command identity is metadata, not a spatial role. Preserve the proven V7
+    // role rotation and let Alpha suppress, move, flank, assault or search.
     const originalApplyRoles = base.applyRoles.bind(this);
     base.applyRoles = (): void => {
       originalApplyRoles();
@@ -424,16 +423,14 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
     const staleWithoutPicture = this.commanderStationarySeconds >= COMMANDER_STALE_NO_PICTURE_SECONDS
       && !commander.targetVisible
       && anotherMemberHasVisual;
-    const staleDespitePicture = this.commanderStationarySeconds >= COMMANDER_STALE_HARD_SECONDS
-      && anotherMemberHasVisual;
     const lowAmmoAnchor = anchorEquipment.ammoRounds <= AMMO_LOW;
 
-    if (lowAmmoAnchor || staleWithoutPicture || staleDespitePicture) {
+    // Remaining still is valid while the commander owns a useful firing lane.
+    // Re-plan only when the position has lost information value or ammunition.
+    if (lowAmmoAnchor || staleWithoutPicture) {
       const reason = lowAmmoAnchor
         ? `commander has only ${Math.floor(anchorEquipment.ammoRounds / AMMO_PER_BURST)} bursts remaining`
-        : staleWithoutPicture
-          ? 'commander has remained on a stale support position while another member owns visual contact'
-          : 'commander support position has remained static too long during an active engagement';
+        : 'commander has remained on a stale support position while another member owns visual contact';
       this.handoffBaseOfFire(COMMANDER_ID, reason, false);
     }
   }
@@ -515,7 +512,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
       const task = this.resupplyTask(agent.id, agent.grenadeCount);
       const equipment = this.equipment.get(agent.id)!;
       const critical = equipment.ammoRounds <= AMMO_CRITICAL || agent.grenadeCount === 0;
-      const supply = this.selectSupply(agent.position, task, baseState.squad.alertState === 'active', critical);
+      const mustResupply = equipment.ammoRounds <= AMMO_LOW || critical;
+      const supply = this.selectSupply(agent.position, task, baseState.squad.alertState === 'active', mustResupply);
       if (supply === null) continue;
 
       this.assignment = { agentId: agent.id, supplyId: supply.id, task };
@@ -555,9 +553,6 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
     const ownsBaseOfFire = agent.id === state.squad.suppressorId;
     if (ownsBaseOfFire && this.selectAnchorReplacement(agent.id) === null) return false;
 
-    // A healthy agent that currently owns direct visual should keep fighting.
-    // Once it reaches the low reserve, however, a prepared support handoff is
-    // more valuable than consuming the final bursts and becoming inert.
     if (agent.targetVisible && equipment.ammoRounds > AMMO_LOW && !critical) return false;
     return true;
   }
@@ -565,7 +560,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
   private resupplyNeedScore(agentId: string, grenadeCount: number): number {
     const equipment = this.equipment.get(agentId);
     if (equipment === undefined) return 0;
-    const ammoNeed = equipment.ammoRounds <= AMMO_PLAN ? (AMMO_PLAN - equipment.ammoRounds + 1) / AMMO_PLAN * 2.4 : 0;
+    // 42 rounds is a planning signal only. A combat detachment is not opened
+    // until the 30-round low reserve so normal maneuver cycles are not broken.
+    const ammoNeed = equipment.ammoRounds <= AMMO_LOW ? (AMMO_LOW - equipment.ammoRounds + 1) / AMMO_LOW * 2.4 : 0;
     const grenadeNeed = grenadeCount <= GRENADE_LOW ? (GRENADE_LOW - grenadeCount + 1) * 0.85 : 0;
     if (ammoNeed === 0 && grenadeNeed === 0) return 0;
     const criticalBonus = equipment.ammoRounds <= AMMO_CRITICAL ? 2 : grenadeCount === 0 ? 0.8 : 0;
@@ -575,18 +572,18 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV7 {
 
   private resupplyTask(agentId: string, grenadeCount: number): LogisticsTask {
     const equipment = this.equipment.get(agentId)!;
-    const ammo = equipment.ammoRounds <= AMMO_PLAN;
+    const ammo = equipment.ammoRounds <= AMMO_LOW;
     const grenades = grenadeCount <= GRENADE_LOW;
     if (ammo && grenades) return 'resupply_mixed';
     if (ammo) return 'resupply_ammo';
     return 'resupply_grenades';
   }
 
-  private selectSupply(from: GridPoint, task: LogisticsTask, activeCombat: boolean, critical: boolean): MutableSupply | null {
+  private selectSupply(from: GridPoint, task: LogisticsTask, activeCombat: boolean, mustResupply: boolean): MutableSupply | null {
     const eligible = this.supplies
       .filter((supply) => supplyHasNeed(supply, task))
       .map((supply) => ({ supply, path: findPath(tacticalWizardNavigationGrid, navCell(from), supply.position) }))
-      .filter((entry) => entry.path.length > 0 && (!activeCombat || critical || entry.path.length <= ACTIVE_RESUPPLY_MAX_PATH))
+      .filter((entry) => entry.path.length > 0 && (!activeCombat || mustResupply || entry.path.length <= ACTIVE_RESUPPLY_MAX_PATH))
       .sort((left, right) => left.path.length - right.path.length || left.supply.id.localeCompare(right.supply.id, 'en'));
     return eligible[0]?.supply ?? null;
   }
