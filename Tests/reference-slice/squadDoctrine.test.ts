@@ -18,6 +18,45 @@ describe('Tactical Wizard squad doctrine', () => {
     expect(decideSquadDoctrine('regroup', { ...baseFacts, tacticTicks: 8, maneuverCycle: 2, planCompletion: 1 }).tactic).toBe('bounding');
   });
 
+  it('breaks the fixed five-stage choreography after repeated static engagement', () => {
+    const repeated = {
+      ...baseFacts,
+      contactTicks: 80,
+      stationaryTargetTicks: 64,
+      tacticTicks: 8,
+      boundingPhase: 2,
+      visibleMembers: 3,
+      maneuverCycle: 1,
+      planCompletion: 1,
+      stableContactTicks: 20,
+    } as const;
+
+    const fromBounding = decideSquadDoctrine('bounding', repeated);
+    expect(fromBounding.tactic).toBe('crossfire');
+    expect(fromBounding.reason).toContain('Repeated static contact');
+
+    const fromCrossfire = decideSquadDoctrine('crossfire', repeated);
+    expect(fromCrossfire.tactic).toBe('regroup');
+    expect(fromCrossfire.reason).toContain('target state has not changed');
+
+    // The next cycle uses another deterministic branch rather than being
+    // permanently locked to the short path.
+    expect(decideSquadDoctrine('bounding', { ...repeated, maneuverCycle: 2 }).tactic).toBe('flank');
+    expect(decideSquadDoctrine('crossfire', { ...repeated, maneuverCycle: 2 }).tactic).toBe('assault');
+  });
+
+  it('does not trigger repetition shortcuts before the engagement is truly stale', () => {
+    expect(decideSquadDoctrine('bounding', {
+      ...baseFacts,
+      boundingPhase: 2,
+      stationaryTargetTicks: 20,
+      tacticTicks: 8,
+      visibleMembers: 3,
+      maneuverCycle: 1,
+      stableContactTicks: 20,
+    }).tactic).toBe('flank');
+  });
+
   it('stops blind assault and enters a sector sweep after sustained visual loss', () => {
     const decision = decideSquadDoctrine('assault', { ...baseFacts, visibleMembers: 0, lostContactTicks: 6, stableContactTicks: 0 });
     expect(decision.tactic).toBe('sweep'); expect(decision.reason).toContain('LKP');
