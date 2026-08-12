@@ -4,12 +4,13 @@ import type { VolitionProjectConfig } from '@volition/schema';
 import { createTranslator, detectLocale, type Locale, type MessageKey } from './i18n';
 import { duplicateAsLocal, loadLocalProjects, saveLocalProjects, tacticalWizardExampleProject, type WorkbenchProject } from './projects';
 import { ProjectHub, OverviewPage } from './pages/ProjectPages';
-import { DesignPage } from './pages/DesignPage';
-import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePages';
-import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulation';
+import { DesignPage } from './pages/DesignPageV2';
+import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePagesV3';
+import { RunLogPage } from './pages/RunLogPage';
+import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV3';
 import { EMPTY_LIVE_TELEMETRY, WorkbenchWebSocketConnection, reduceLiveTelemetry, type ConnectionState, type LiveTelemetryState, validateLiveEndpoint } from './connection';
 
-type PageId = 'projects' | 'overview' | 'design' | 'simulation' | 'debug' | 'visualization' | 'connection';
+type PageId = 'projects' | 'overview' | 'design' | 'simulation' | 'debug' | 'log' | 'visualization' | 'connection';
 const connection = new WorkbenchWebSocketConnection();
 
 export function App() {
@@ -33,8 +34,7 @@ export function App() {
   const heldDirections = useRef<string[]>([]);
 
   const step = () => {
-    const next = simulationRef.current.step();
-    setSimulation(next);
+    const next = simulationRef.current.step(); setSimulation(next);
     for (const trace of next.latestTraces) setTraceHistory((history) => appendTrace(history, trace));
   };
   const reset = () => { setPlaying(false); setTraceHistory([]); setSimulation(simulationRef.current.reset()); };
@@ -72,12 +72,13 @@ export function App() {
   };
   const disconnect = () => { connection.disconnect(); setConnectionState('offline'); setConnectionDetail('Disconnected. Offline Simulation remains available.'); setLiveTelemetry(EMPTY_LIVE_TELEMETRY); };
 
-  return <div className="editor-shell"><aside className="sidebar"><div className="brand-block"><span className="brand-mark">V</span><div><strong>{t('product')}</strong><small>{t('workbench')}</small></div></div><button className="project-switcher" onClick={() => setPage('projects')}><span><small>{project.kind === 'built-in' ? t('builtInExample') : t('localProject')}</small><strong>{locale === 'zh-CN' && project.nameZh ? project.nameZh : project.name}</strong></span><span>⌄</span></button><nav className="nav-list"><Nav id="overview" current={page} setPage={setPage} icon="◫" label={t('overview')} /><Nav id="design" current={page} setPage={setPage} icon="◇" label={t('design')} /><Nav id="simulation" current={page} setPage={setPage} icon="▶" label={t('simulation')} /><Nav id="debug" current={page} setPage={setPage} icon="◎" label={t('debug')} /><Nav id="visualization" current={page} setPage={setPage} icon="⌁" label={t('visualization')} /><div className="nav-divider" /><Nav id="connection" current={page} setPage={setPage} icon="↔" label={t('connection')} /></nav><div className="sidebar-footer"><div className="locale-switch"><button className={locale === 'zh-CN' ? 'active' : ''} onClick={() => changeLocale('zh-CN')}>中文</button><button className={locale === 'en-US' ? 'active' : ''} onClick={() => changeLocale('en-US')}>EN</button></div><small>v{__VOLITION_VERSION__} · {__VOLITION_COMMIT__.slice(0,8)}</small></div></aside><main className="editor-main"><header className="editor-topbar"><div><span className="breadcrumb">{t('product')} / {t(pageLabel(page))}</span><h1>{page === 'projects' ? t('projectLibrary') : locale === 'zh-CN' && project.nameZh ? project.nameZh : project.name}</h1></div><div className="top-status"><span className="status-chip offline">Offline Simulation</span><span className={`status-chip ${connectionState}`}>{connectionState}</span></div></header>
+  return <div className="editor-shell"><aside className="sidebar"><div className="brand-block"><span className="brand-mark">V</span><div><strong>{t('product')}</strong><small>{t('workbench')}</small></div></div><button className="project-switcher" onClick={() => setPage('projects')}><span><small>{project.kind === 'built-in' ? t('builtInExample') : t('localProject')}</small><strong>{locale === 'zh-CN' && project.nameZh ? project.nameZh : project.name}</strong></span><span>⌄</span></button><nav className="nav-list"><Nav id="overview" current={page} setPage={setPage} icon="◫" label={t('overview')} /><Nav id="design" current={page} setPage={setPage} icon="◇" label={t('design')} /><Nav id="simulation" current={page} setPage={setPage} icon="▶" label={t('simulation')} /><Nav id="debug" current={page} setPage={setPage} icon="◎" label={t('debug')} /><Nav id="log" current={page} setPage={setPage} icon="≡" label={t('log')} /><Nav id="visualization" current={page} setPage={setPage} icon="⌁" label={t('visualization')} /><div className="nav-divider" /><Nav id="connection" current={page} setPage={setPage} icon="↔" label={t('connection')} /></nav><div className="sidebar-footer"><div className="locale-switch"><button className={locale === 'zh-CN' ? 'active' : ''} onClick={() => changeLocale('zh-CN')}>中文</button><button className={locale === 'en-US' ? 'active' : ''} onClick={() => changeLocale('en-US')}>EN</button></div><small>v{__VOLITION_VERSION__} · {__VOLITION_COMMIT__.slice(0,8)}</small></div></aside><main className="editor-main"><header className="editor-topbar"><div><span className="breadcrumb">{t('product')} / {t(pageLabel(page))}</span><h1>{page === 'projects' ? t('projectLibrary') : locale === 'zh-CN' && project.nameZh ? project.nameZh : project.name}</h1></div><div className="top-status"><span className="status-chip offline">Offline Simulation</span><span className={`status-chip ${connectionState}`}>{connectionState}</span></div></header>
     {page === 'projects' && <ProjectHub t={t} locale={locale} localProjects={localProjects} onSelect={selectProject} onCreate={storeProject} onImport={storeProject} />}
     {page === 'overview' && <OverviewPage t={t} locale={locale} project={project} simulation={simulation} onOpenSimulation={() => setPage('simulation')} />}
     {page === 'design' && <DesignPage t={t} locale={locale} config={config} setConfig={setConfig} project={project} onSave={saveCurrent} onReset={() => setConfig(structuredClone(project.config))} />}
-    {page === 'simulation' && <SimulationPage t={t} simulation={simulation} overlays={overlays} setOverlays={setOverlays} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onStep={step} onReset={reset} onNoise={() => { simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }} onMove={(dx,dy) => { simulationRef.current.nudgePlayer(dx,dy); setSimulation(simulationRef.current.getState()); }} onSetPlayer={(point) => { simulationRef.current.setPlayerPosition(point); setSimulation(simulationRef.current.getState()); }} />}
-    {page === 'debug' && <DebugPage t={t} simulation={simulation} traces={traceHistory} />}
+    {page === 'simulation' && <SimulationPage t={t} locale={locale} simulation={simulation} overlays={overlays} setOverlays={setOverlays} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onStep={step} onReset={reset} onNoise={() => { simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }} onMove={(dx,dy) => { simulationRef.current.nudgePlayer(dx,dy); setSimulation(simulationRef.current.getState()); }} onSetPlayer={(point) => { simulationRef.current.setPlayerPosition(point); setSimulation(simulationRef.current.getState()); }} />}
+    {page === 'debug' && <DebugPage t={t} locale={locale} simulation={simulation} traces={traceHistory} />}
+    {page === 'log' && <RunLogPage locale={locale} simulation={simulation} />}
     {page === 'visualization' && <VisualizationPage t={t} traces={traceHistory} />}
     {page === 'connection' && <ConnectionPage endpoint={endpoint} setEndpoint={setEndpoint} connectionState={connectionState} connectionDetail={connectionDetail} liveMessages={liveMessages} liveTelemetry={liveTelemetry} onConnect={connect} onDisconnect={disconnect} />}
   </main></div>;
