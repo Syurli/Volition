@@ -31,7 +31,7 @@ describe('Tactical Wizard interactive Workbench example V3', () => {
       for (const agent of state.agents) { const roles = rolesByAgent.get(agent.id) ?? new Set<string>(); roles.add(agent.role); rolesByAgent.set(agent.id, roles); expect(agent.visualKey).toBe(visualIdentity.get(agent.id)); }
       if (seenTactics.has('flank') && seenTactics.has('crossfire') && seenTactics.has('assault') && seenTactics.has('regroup')) break;
     }
-    expect(seenTactics).toEqual(expect.objectContaining(new Set(['bounding', 'flank', 'crossfire', 'assault', 'regroup'])));
+    for (const tactic of ['bounding', 'flank', 'crossfire', 'assault', 'regroup']) expect(seenTactics.has(tactic)).toBe(true);
     expect([...rolesByAgent.values()].every((roles) => roles.size >= 2)).toBe(true);
     expect(state.runLog.some((entry) => entry.category === 'squad' && entry.event === 'tactic' && entry.data.to === 'crossfire')).toBe(true);
   });
