@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
 import './authoring.css';
+import './workbench-v3.css';
 
 const root = document.getElementById('root');
 if (root === null) throw new Error('Workbench root element is missing.');

@@ -1,5 +1,5 @@
-import { tacticalWizardProjectConfig } from '@volition/example-tactical-wizard';
 import type { VolitionProjectConfig } from '@volition/schema';
+import { tacticalWizardWorkbenchConfig } from './referenceProjectConfig';
 
 export interface WorkbenchProject {
   readonly workspaceVersion: 1;
@@ -17,9 +17,9 @@ export const tacticalWizardExampleProject: WorkbenchProject = {
   id: 'example:tactical-wizard',
   name: 'Tactical Wizard AI',
   nameZh: '战术巫师 AI',
-  description: 'Reference example for a generic rifle enemy.',
+  description: 'Reference example for a generic rifle squad.',
   kind: 'built-in',
-  config: tacticalWizardProjectConfig,
+  config: tacticalWizardWorkbenchConfig,
   defaultMapId: 'tactical-wizard-training-yard',
 };
 
