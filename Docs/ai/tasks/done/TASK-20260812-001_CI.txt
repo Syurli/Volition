@@ -1,0 +1,1 @@
+Last full CI before documentation-only commits: 10 test files, 36 tests, production build and reference package packing all passed.
