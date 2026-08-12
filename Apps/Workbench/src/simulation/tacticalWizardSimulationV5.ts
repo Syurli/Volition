@@ -909,7 +909,14 @@ export class TacticalWizardSimulation {
     for (const key of buildFireLaneBlockedCells(tacticalWizardNavigationGrid, lanes, member.id)) transientBlocked.add(key);
     transientBlocked.delete(gridKey(startCell));
     transientBlocked.delete(gridKey(goalCell));
-    const path = findPath(tacticalWizardNavigationGrid, startCell, goalCell, transientBlocked);
+    let path = findPath(tacticalWizardNavigationGrid, startCell, goalCell, transientBlocked);
+    if (path.length === 0 && lanes.length > 0) {
+      const safetyFallbackBlocked = new Set(occupiedCells);
+      safetyFallbackBlocked.add(gridKey(toNavCell(this.player)));
+      safetyFallbackBlocked.delete(gridKey(startCell));
+      safetyFallbackBlocked.delete(gridKey(goalCell));
+      path = findPath(tacticalWizardNavigationGrid, startCell, goalCell, safetyFallbackBlocked);
+    }
     member.path = path.length === 0 ? [] : [{ ...member.position }, ...path.slice(1)];
     if (path.length === 0) {
       member.stalledTicks += 1;
@@ -949,10 +956,11 @@ export class TacticalWizardSimulation {
   }
 
   private canSeePlayer(member: MutableMember): boolean {
-    const range = distance(member.position, this.player);
-    if (range > this.visionRange || !hasWorldLineOfSight(member.position, this.player)) return false;
+    const origin = this.fireOriginFor(member);
+    const range = distance(origin, this.player);
+    if (range > this.visionRange || !hasWorldLineOfSight(origin, this.player)) return false;
     if (range <= POSITION_EPSILON) return true;
-    const direction = { x: (this.player.x - member.position.x) / range, y: (this.player.y - member.position.y) / range };
+    const direction = { x: (this.player.x - origin.x) / range, y: (this.player.y - origin.y) / range };
     const facingLength = Math.hypot(member.facing.x, member.facing.y) || 1;
     const facing = { x: member.facing.x / facingLength, y: member.facing.y / facingLength };
     const dot = Math.max(-1, Math.min(1, direction.x * facing.x + direction.y * facing.y));
