@@ -1,1 +1,0 @@
-Completed: tactical spatial variety, localized modular authoring UX, and exportable player/squad/agent run logging.
