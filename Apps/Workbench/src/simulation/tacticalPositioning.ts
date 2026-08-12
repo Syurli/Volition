@@ -7,10 +7,16 @@ const MIN_PEEK_SPACING = 1.2;
 const FIRE_LANE_BODY_CLEARANCE = 0.95;
 const MIN_FLANK_ANGLE_DEGREES = 24;
 
+export interface TacticalFiringReservation {
+  readonly id: string;
+  readonly position: GridPoint;
+  readonly fireOrigin: GridPoint;
+}
+
 /**
  * V7 tactical-position guard. The base selector still scores path/range/progress,
- * but candidates first have to be compatible with already-reserved firing positions.
- * This prevents two individually-good cover slots from forming one bad squad solution.
+ * but candidates first have to be compatible with every reserved firing position.
+ * Reservations may come from a real CoverSlot or from a fallback tactical point.
  */
 export function selectCoordinatedCoverSlot(
   grid: NavigationGrid,
@@ -20,29 +26,49 @@ export function selectCoordinatedCoverSlot(
   reservedSlotIds: ReadonlySet<string>,
   mode: CoverSelectionMode,
   sideBias = 0,
+  extraReservations: readonly TacticalFiringReservation[] = [],
 ): CoverSlot | null {
-  const reserved = slots.filter((slot) => reservedSlotIds.has(slot.id));
-  const strict = slots.filter((slot) => !reservedSlotIds.has(slot.id) && reserved.every((other) => compatible(slot, other, threat, mode)));
+  const slotReservations = slots
+    .filter((slot) => reservedSlotIds.has(slot.id))
+    .map((slot): TacticalFiringReservation => ({ id: slot.id, position: slot.position, fireOrigin: slot.peekPosition }));
+  const reservations = [...slotReservations, ...extraReservations];
+  const strict = slots.filter((slot) => !reservedSlotIds.has(slot.id) && !positionConflictsWithReservations(slot.position, slot.peekPosition, threat, reservations, mode));
   if (strict.length === 0) return null;
   return selectBaseCoverSlot(grid, strict, from, threat, reservedSlotIds, mode, sideBias);
 }
 
 export function tacticalSlotsConflict(left: CoverSlot, right: CoverSlot, threat: GridPoint, mode: CoverSelectionMode = 'support'): boolean {
-  return !compatible(left, right, threat, mode);
+  return positionConflictsWithReservations(left.position, left.peekPosition, threat, [{ id: right.id, position: right.position, fireOrigin: right.peekPosition }], mode);
 }
 
-function compatible(candidate: CoverSlot, reserved: CoverSlot, threat: GridPoint, mode: CoverSelectionMode): boolean {
-  if (distance(candidate.position, reserved.position) < MIN_FINAL_SPACING) return false;
-  if (distance(candidate.peekPosition, reserved.peekPosition) < MIN_PEEK_SPACING) return false;
+export function positionConflictsWithReservations(
+  position: GridPoint,
+  fireOrigin: GridPoint,
+  threat: GridPoint,
+  reservations: readonly TacticalFiringReservation[],
+  mode: CoverSelectionMode = 'support',
+): boolean {
+  return reservations.some((reserved) => !compatible(position, fireOrigin, reserved, threat, mode));
+}
+
+function compatible(
+  candidatePosition: GridPoint,
+  candidateFireOrigin: GridPoint,
+  reserved: TacticalFiringReservation,
+  threat: GridPoint,
+  mode: CoverSelectionMode,
+): boolean {
+  if (distance(candidatePosition, reserved.position) < MIN_FINAL_SPACING) return false;
+  if (distance(candidateFireOrigin, reserved.fireOrigin) < MIN_PEEK_SPACING) return false;
 
   // Candidate body must not sit inside the already-reserved shooter's useful lane.
-  if (pointBlocksLane(candidate.position, reserved.peekPosition, threat, FIRE_LANE_BODY_CLEARANCE)) return false;
+  if (pointBlocksLane(candidatePosition, reserved.fireOrigin, threat, FIRE_LANE_BODY_CLEARANCE)) return false;
   // Reserved body must not sit inside the candidate's useful lane.
-  if (pointBlocksLane(reserved.position, candidate.peekPosition, threat, FIRE_LANE_BODY_CLEARANCE)) return false;
+  if (pointBlocksLane(reserved.position, candidateFireOrigin, threat, FIRE_LANE_BODY_CLEARANCE)) return false;
 
   // Crossfire / flank opportunities should open a visibly different angle rather than
   // selecting two neighboring cells on almost the same radial line.
-  if (mode === 'flank' && angleAtThreat(candidate.peekPosition, reserved.peekPosition, threat) < MIN_FLANK_ANGLE_DEGREES) return false;
+  if (mode === 'flank' && angleAtThreat(candidateFireOrigin, reserved.fireOrigin, threat) < MIN_FLANK_ANGLE_DEGREES) return false;
   return true;
 }
 
