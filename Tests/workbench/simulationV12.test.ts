@@ -6,6 +6,12 @@ import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/ta
 describe('Tactical Wizard V12 rescue fire support', () => {
   it('moves the dedicated rescue coverer onto a real firing lane and actively suppresses during rescue', () => {
     const simulation = new TacticalWizardSimulation();
+    // Smoke has its own regression coverage. Keep this scenario focused on the
+    // rescue fire-support contract so an opportunistic pre-rescue smoke grenade
+    // cannot legitimately obscure the lane under test.
+    for (const id of ['twr:rifle-squad:alpha', 'twr:rifle-squad:bravo', 'twr:rifle-squad:charlie']) {
+      expect(simulation.setAgentEquipment(id, { grenades: 0 })).toBe(true);
+    }
     expect(simulation.setPlayerPosition({ x: 12.25, y: 9.61 })).toBe(true);
 
     let state = simulation.getState();
