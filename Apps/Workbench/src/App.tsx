@@ -7,6 +7,7 @@ import { ProjectHub, OverviewPage } from './pages/ProjectPages';
 import { DesignPage } from './pages/DesignPageV2';
 import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePagesV3';
 import { RunLogPage } from './pages/RunLogPage';
+import type { GridPoint } from './simulation/navigation';
 import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV4';
 import { EMPTY_LIVE_TELEMETRY, WorkbenchWebSocketConnection, reduceLiveTelemetry, type ConnectionState, type LiveTelemetryState, validateLiveEndpoint } from './connection';
 
@@ -51,21 +52,58 @@ export function App() {
   }, [playing, speed]);
 
   useEffect(() => {
+    const syncSimulation = () => setSimulation(simulationRef.current.getState());
     const keyDown = (event: KeyboardEvent) => {
       if (page !== 'simulation' || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       const direction = normalizeDirectionKey(event.key);
       if (direction !== null) { event.preventDefault(); heldDirections.current = [...heldDirections.current.filter((key) => key !== direction), direction]; }
-      if (event.code === 'Space' && !event.repeat) { event.preventDefault(); simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }
+      if (event.code === 'Space' && !event.repeat) { event.preventDefault(); simulationRef.current.emitNoise(); syncSimulation(); }
     };
     const keyUp = (event: KeyboardEvent) => { const direction = normalizeDirectionKey(event.key); if (direction !== null) heldDirections.current = heldDirections.current.filter((key) => key !== direction); };
     const blur = () => { heldDirections.current = []; };
+    const aim = (event: Event) => {
+      if (page !== 'simulation') return;
+      const point = (event as CustomEvent<GridPoint>).detail;
+      if (point && simulationRef.current.setPlayerAimTarget(point)) syncSimulation();
+    };
+    const fire = (event: Event) => {
+      if (page !== 'simulation') return;
+      const point = (event as CustomEvent<GridPoint>).detail;
+      if (point && simulationRef.current.playerFireAt(point)) syncSimulation();
+    };
+    const throwGrenade = (event: Event) => {
+      if (page !== 'simulation') return;
+      const point = (event as CustomEvent<GridPoint>).detail;
+      if (point && simulationRef.current.playerThrowGrenadeAt(point)) syncSimulation();
+    };
+    const cycleGrenade = (event: Event) => {
+      if (page !== 'simulation') return;
+      const delta = (event as CustomEvent<number>).detail;
+      if (typeof delta === 'number' && delta !== 0) { simulationRef.current.cyclePlayerGrenade(delta); syncSimulation(); }
+    };
     const movementTimer = window.setInterval(() => {
       if (page !== 'simulation') return;
       const direction = heldDirections.current.at(-1); if (direction === undefined) return;
-      const [dx, dy] = directionDelta(direction); if (simulationRef.current.nudgePlayer(dx, dy)) setSimulation(simulationRef.current.getState());
+      const [dx, dy] = directionDelta(direction); if (simulationRef.current.nudgePlayer(dx, dy)) syncSimulation();
     }, 1000 / PLAYBACK_HZ);
-    window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur);
-    return () => { window.clearInterval(movementTimer); heldDirections.current = []; window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur); };
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', blur);
+    window.addEventListener('volition-sim-aim', aim as EventListener);
+    window.addEventListener('volition-sim-fire', fire as EventListener);
+    window.addEventListener('volition-sim-grenade', throwGrenade as EventListener);
+    window.addEventListener('volition-sim-cycle-grenade', cycleGrenade as EventListener);
+    return () => {
+      window.clearInterval(movementTimer);
+      heldDirections.current = [];
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+      window.removeEventListener('blur', blur);
+      window.removeEventListener('volition-sim-aim', aim as EventListener);
+      window.removeEventListener('volition-sim-fire', fire as EventListener);
+      window.removeEventListener('volition-sim-grenade', throwGrenade as EventListener);
+      window.removeEventListener('volition-sim-cycle-grenade', cycleGrenade as EventListener);
+    };
   }, [page]);
 
   const selectProject = (next: WorkbenchProject) => { setProject(next); setConfig(structuredClone(next.config)); reset(); setPage('overview'); };
