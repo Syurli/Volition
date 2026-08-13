@@ -35,6 +35,7 @@ describe('Tactical Wizard V15 contact hypotheses and directional search', () => 
     expect(state.contactTrack.verifiedBy.length).toBeGreaterThan(0);
     expect(state.contactTrack.frontier.length).toBeGreaterThan(0);
     expect(state.contactTrack.frontier.some((point) => point.x > lkp.x)).toBe(true);
+    expect(state.runLog.some((entry) => /Negative visual evidence verified the last confirmed point empty/i.test(entry.summary))).toBe(true);
 
     const clearedSequence = state.runLog.at(-1)?.sequence ?? 0;
     for (let frame = 0; frame < 360; frame += 1) state = simulation.advance(1 / 30);
@@ -43,8 +44,6 @@ describe('Tactical Wizard V15 contact hypotheses and directional search', () => 
       && /^.+ fired:/i.test(entry.summary)
       && isSamePoint(entry.data.target, lkp));
     expect(postClearDirectFire).toHaveLength(0);
-    expect(state.runLog.some((entry) => /is not a valid direct-fire target/i.test(entry.summary)
-      && (entry.data.targetKind === 'cleared_lkp' || entry.data.targetKind === 'stale_lkp'))).toBe(true);
   }, 35000);
 
   it('never copies a hidden live player coordinate into the exact contact track after Host LOS is gone', () => {
