@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV13';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV14';
 
 const IDS = ['twr:rifle-squad:alpha', 'twr:rifle-squad:bravo', 'twr:rifle-squad:charlie'] as const;
 
-describe('Tactical Wizard V13 rescue reliability and unseen-fire response', () => {
+describe('Tactical Wizard V14 rescue reliability and unseen-fire response', () => {
   it('assigns a non-exposed living member to suppress the coarse unseen-fire sector', () => {
     const simulation = new TacticalWizardSimulation();
     for (const id of IDS) expect(simulation.setAgentEquipment(id, { grenades: 0 })).toBe(true);
@@ -51,6 +51,7 @@ describe('Tactical Wizard V13 rescue reliability and unseen-fire response', () =
     let sawApproach = false;
     let approachBackToEstablish = 0;
     let previousPhase = state.recovery.phase;
+    let maxSecurityDistance = 0;
 
     for (let frame = 0; frame < 2400; frame += 1) {
       state = simulation.advance(1 / 30);
@@ -68,15 +69,15 @@ describe('Tactical Wizard V13 rescue reliability and unseen-fire response', () =
       if (state.runLog.some((entry) => entry.event === 'fire'
         && /rescue security (covering fire|suppression on last-known threat)/i.test(entry.summary))) sawSupportFire = true;
       const casualty = state.agents.find((agent) => agent.id === casualtyId);
+      if (state.rescueFireSupport.securityPosition !== null && casualty !== undefined) {
+        maxSecurityDistance = Math.max(maxSecurityDistance, distance(state.rescueFireSupport.securityPosition, casualty.position));
+      }
       if (casualty?.alive) break;
     }
 
     const casualty = state.agents.find((agent) => agent.id === casualtyId);
     expect(rescuerId).not.toBeNull();
-    expect(state.rescueFireSupport.securityPosition === null || distance(
-      state.rescueFireSupport.securityPosition,
-      casualty?.position ?? { x: 0, y: 0 },
-    )).toBeLessThanOrEqual(5.3);
+    expect(maxSecurityDistance).toBeLessThanOrEqual(5.3);
     expect(sawReady).toBe(true);
     expect(sawApproach).toBe(true);
     expect(rescuerMoved).toBe(true);
