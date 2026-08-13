@@ -170,20 +170,8 @@ const EXTENDED_FIRE_INTERVAL_TICKS = 4;
 /**
  * V18 makes recovery geometry and movement orientation respond to battlefield
  * changes instead of treating the first rescue points as permanent anchors.
- *
- * Recovery planning remains Host-owned. It consumes only a live Host-confirmed
+ * Recovery planning remains Host-owned and consumes only a live Host-confirmed
  * visual target, an already-coarsened incoming-fire sector, or contact memory.
- * Hidden live player coordinates are never used to replan a rescue.
- *
- * A recovery now owns three coupled spatial facts:
- * - stage: a safe point the rescuer may approach before final security is ready;
- * - treatment: the final casualty-access point;
- * - security: the coverer's threat-facing fire-support position.
- *
- * Those points are revalidated as a set when confirmed threat geometry changes,
- * a route becomes invalid, or the support lane is lost. V18 also caps prolonged
- * backpedal travel, extends sandbox vision/hearing, turns rifle shots into real
- * noise stimuli, and extends the player/AI test weapon envelope.
  */
 export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
   private dynamicRecoveryGeometry: DynamicRecoveryGeometry | null = null;
@@ -202,9 +190,6 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
 
   constructor() {
     super();
-    // V7's public readonly fields are inferred as literal types (10/12). Keep
-    // the historical baseline untouched and retune only this reference Host
-    // instance at runtime so V7-V17 regression expectations remain stable.
     Object.defineProperty(this, 'hearingRadius', { value: V18_HEARING_RADIUS, writable: false, configurable: true });
     Object.defineProperty(this, 'visionRange', { value: V18_VISION_RANGE, writable: false, configurable: true });
     this.installDynamicRecoveryHooks();
@@ -246,13 +231,13 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
   }
 
   override advance(deltaSeconds: number): TacticalWizardSimulationState {
-    this.maintainDynamicRecovery(this.baseState(), false);
+    this.maintainDynamicRecovery(this.v18BaseState(), false);
     super.advance(deltaSeconds);
-    let state = this.baseState();
+    let state = this.v18BaseState();
     this.maintainDynamicRecovery(state, false);
     this.expireStaleThreatResponse(state);
     this.synchronizeOperationalAlert(state);
-    state = this.baseState();
+    state = this.v18BaseState();
     if (state.logicalTick !== this.lastExtendedFireDecisionTick) {
       this.lastExtendedFireDecisionTick = state.logicalTick;
       this.maintainExtendedRangeFire(state);
@@ -261,11 +246,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
   }
 
   override playerFireAt(point: GridPoint): boolean {
-    const before = this.baseState();
+    const before = this.v18BaseState();
     const result = super.playerFireAt(point);
     this.registerGunshotEpisode(before);
     this.resolveExtendedPlayerHit(before);
-    const after = this.baseState();
+    const after = this.v18BaseState();
     this.maintainDynamicRecovery(after, false);
     this.synchronizeOperationalAlert(after);
     return result;
@@ -323,10 +308,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     };
   }
 
-  /** Deterministic editor/test hook: force the current recovery geometry to revalidate. */
   replanRecoveryForTest(): boolean {
     if (this.v18Recovery().rescuePlan === null) return false;
-    this.maintainDynamicRecovery(this.baseState(), true, 'manual_refresh');
+    this.maintainDynamicRecovery(this.v18BaseState(), true, 'manual_refresh');
     return true;
   }
 
@@ -342,7 +326,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
       const plan = internals.rescuePlan;
       const geometry = this.dynamicRecoveryGeometry;
       if (plan !== null && geometry !== null && member.id === plan.rescuerId && plan.phase === 'establish_cover') {
-        const state = this.baseState();
+        const state = this.v18BaseState();
         const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
         if (rescuer !== undefined && rescuer.alive && distance(rescuer.position, geometry.stagePoint) > RECOVERY_STAGE_ARRIVAL) {
           return { handled: true, target: { ...geometry.stagePoint } };
@@ -357,7 +341,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
       const plan = internals.rescuePlan;
       const geometry = this.dynamicRecoveryGeometry;
       if (plan !== null && geometry !== null && plan.phase === 'establish_cover' && plan.rescuerId === agentId) {
-        const rescuer = this.baseState().agents.find((agent) => agent.id === agentId);
+        const rescuer = this.v18BaseState().agents.find((agent) => agent.id === agentId);
         if (rescuer !== undefined && distance(rescuer.position, geometry.stagePoint) > RECOVERY_STAGE_ARRIVAL) return 'rescue_move';
       }
       return originalRecoveryTaskFor(agentId);
@@ -374,7 +358,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
         return original;
       }
 
-      const state = this.baseState();
+      const state = this.v18BaseState();
       const previousFrames = (this.backpedalFrames.get(member.id) ?? 0) + 1;
       this.backpedalFrames.set(member.id, previousFrames);
       const agent = state.agents.find((entry) => entry.id === member.id);
@@ -596,7 +580,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
   }
 
   private resolveExtendedPlayerHit(before: TacticalWizardSimulationStateV17): void {
-    const after = this.baseState();
+    const after = this.v18BaseState();
     const parentAlreadyHit = after.agents.some((agent) => {
       const previous = before.agents.find((entry) => entry.id === agent.id);
       return previous !== undefined && agent.health < previous.health;
@@ -678,7 +662,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     if (state.threatResponse.active && host.alertState === 'idle') host.alertState = 'active';
   }
 
-  private baseState(): TacticalWizardSimulationStateV17 {
+  private v18BaseState(): TacticalWizardSimulationStateV17 {
     return super.getState();
   }
 
@@ -713,12 +697,7 @@ export function shouldForceTravelFacing(input: {
   return input.consecutiveBackpedalFrames > (input.hasVisual ? VISUAL_BACKPEDAL_MAX_FRAMES : BACKPEDAL_MAX_FRAMES);
 }
 
-function selectTreatmentPoint(
-  casualty: GridPoint,
-  rescuer: GridPoint,
-  threat: GridPoint | null,
-  occupied: readonly GridPoint[],
-): GridPoint | null {
+function selectTreatmentPoint(casualty: GridPoint, rescuer: GridPoint, threat: GridPoint | null, occupied: readonly GridPoint[]): GridPoint | null {
   const casualtyCell = toCell(casualty);
   const rescuerCell = toCell(rescuer);
   const candidates: Array<{ readonly point: GridPoint; readonly score: number }> = [];
@@ -741,12 +720,7 @@ function selectTreatmentPoint(
   return candidates[0]?.point ?? null;
 }
 
-function selectStagePoint(
-  rescuer: GridPoint,
-  casualty: GridPoint,
-  treatment: GridPoint,
-  threat: GridPoint | null,
-): GridPoint | null {
+function selectStagePoint(rescuer: GridPoint, casualty: GridPoint, treatment: GridPoint, threat: GridPoint | null): GridPoint | null {
   const path = findPath(tacticalWizardNavigationGrid, toCell(rescuer), toCell(treatment));
   if (path.length === 0) return null;
   const candidates = path.filter((point) => {
@@ -764,12 +738,7 @@ function selectStagePoint(
   return { ...ranked[0]!.point };
 }
 
-function selectSecurityPoint(
-  coverer: GridPoint,
-  casualty: GridPoint,
-  threat: GridPoint | null,
-  occupied: readonly GridPoint[],
-): GridPoint | null {
+function selectSecurityPoint(coverer: GridPoint, casualty: GridPoint, threat: GridPoint | null, occupied: readonly GridPoint[]): GridPoint | null {
   const center = toCell(casualty);
   const start = toCell(coverer);
   const candidates: Array<{ readonly point: GridPoint; readonly score: number }> = [];
