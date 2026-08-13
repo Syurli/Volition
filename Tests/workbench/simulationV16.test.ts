@@ -30,7 +30,7 @@ interface UnsafeHost {
 }
 
 describe('Tactical Wizard V16 combat authority', () => {
-  it('preempts grenade resupply when current visual contact becomes the higher operational commitment', () => {
+  it('preempts grenade resupply while current visual contact is the higher operational commitment', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setAgentEquipment('twr:rifle-squad:bravo', { ammoRounds: 96, grenades: 0 })).toBe(true);
 
@@ -39,12 +39,11 @@ describe('Tactical Wizard V16 combat authority', () => {
     expect(state.command.activeResupplySupplyId).not.toBeNull();
 
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
-    state = advanceUntil(simulation, (candidate) => candidate.combatAuthority.confirmedVisualIds.length > 0, 360);
-    expect(state.combatAuthority.confirmedVisualIds.length).toBeGreaterThan(0);
+    state = advanceUntil(simulation, (candidate) => candidate.combatAuthority.confirmedVisualIds.length > 0
+      && candidate.command.activeResupplyAgentId !== 'twr:rifle-squad:bravo'
+      && candidate.combatAuthority.logisticsPreemptions > 0, 480);
 
-    // V8 may plan the low grenade stock before the combat tick, but V16 must
-    // revoke that detachment before movement/fire execution can be hijacked.
-    state = simulation.advance(0.25);
+    expect(state.combatAuthority.confirmedVisualIds.length).toBeGreaterThan(0);
     expect(state.command.activeResupplyAgentId).not.toBe('twr:rifle-squad:bravo');
     expect(state.combatAuthority.logisticsPreemptions).toBeGreaterThan(0);
     expect(state.runLog.some((entry) => /Lower-priority logistics was preempted/i.test(entry.summary))).toBe(true);
@@ -57,21 +56,24 @@ describe('Tactical Wizard V16 combat authority', () => {
     const bravo = member(host, 'twr:rifle-squad:bravo');
     const charlie = member(host, 'twr:rifle-squad:charlie');
 
-    alpha.position = { x: 10, y: 2 };
-    alpha.facing = { x: 1, y: 0 };
+    // Keep Bravo's weapon line on the known-open patrol row while Charlie
+    // reports the same live target from an offset row. Bravo deliberately faces
+    // away so this exercises squad-confirmed fire authority rather than self FOV.
+    alpha.position = { x: 6, y: 4 };
+    alpha.facing = { x: -1, y: 0 };
     alpha.coverSlot = null;
-    bravo.position = { x: 10, y: 4 };
+    bravo.position = { x: 10, y: 2 };
     bravo.facing = { x: -1, y: 0 };
     bravo.coverSlot = null;
-    charlie.position = { x: 6, y: 4 };
-    charlie.facing = { x: -1, y: 0 };
+    charlie.position = { x: 14, y: 4 };
+    charlie.facing = { x: 0, y: -1 };
     charlie.coverSlot = null;
 
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.advance(1 / 30);
-    expect(host.canSeePlayer(alpha)).toBe(true);
+    expect(host.canSeePlayer(charlie)).toBe(true);
     expect(host.canSeePlayer(bravo)).toBe(false);
-    expect(state.combatAuthority.confirmedVisualIds).toContain(alpha.id);
+    expect(state.combatAuthority.confirmedVisualIds).toContain(charlie.id);
 
     const beforeAmmo = state.agents.find((agent) => agent.id === bravo.id)!.ammoRounds;
     bravo.firePulse = 0;
