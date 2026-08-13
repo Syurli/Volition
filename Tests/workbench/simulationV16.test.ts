@@ -72,6 +72,10 @@ describe('Tactical Wizard V16 combat authority', () => {
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.advance(1 / 30);
     expect(host.canSeePlayer(charlie)).toBe(true);
+    // The motion/posture layer may orient support members during the frame.
+    // Re-establish the deliberate non-reporter FOV before exercising the fire
+    // authorization call itself.
+    bravo.facing = { x: -1, y: 0 };
     expect(host.canSeePlayer(bravo)).toBe(false);
     expect(state.combatAuthority.confirmedVisualIds).toContain(charlie.id);
 
