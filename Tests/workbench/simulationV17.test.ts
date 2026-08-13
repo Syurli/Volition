@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation, healthBand } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV17';
+import {
+  TacticalWizardSimulation,
+  healthBand,
+  type TacticalWizardSimulationState,
+} from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV17';
 
 describe('Tactical Wizard V17 threat awareness and mutual support', () => {
   it('turns repeated non-hit fire near a soldier into a coarse threat response', () => {
@@ -87,7 +91,7 @@ describe('Tactical Wizard V17 threat awareness and mutual support', () => {
       validateCommittedThrowable: (
         member: { id: string; label: string; position: { x: number; y: number } },
         grenade: { id: number; ownerId: string; kind: 'flash'; from: { x: number; y: number }; to: { x: number; y: number }; radius: number; remainingFrames: number; totalFrames: number; flightFrames: number },
-        state: typeof state,
+        state: TacticalWizardSimulationState,
       ) => { safe: boolean; reason: string; friendliesAtRisk: readonly string[]; targetClass: string };
     };
     const alpha = host.members.find((member) => member.id === 'twr:rifle-squad:alpha')!;
