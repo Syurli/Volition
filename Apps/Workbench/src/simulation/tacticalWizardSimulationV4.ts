@@ -1,9 +1,9 @@
-export * from './tacticalWizardSimulationIntegrated';
+export * from './tacticalWizardSimulationExecutionIntegrated';
 
 import {
   TacticalWizardSimulation as TacticalWizardSimulationIntegrated,
   type TacticalWizardSimulationState,
-} from './tacticalWizardSimulationIntegrated';
+} from './tacticalWizardSimulationExecutionIntegrated';
 
 /** Compatibility entry used by the current Workbench shell. */
 export class TacticalWizardSimulation extends TacticalWizardSimulationIntegrated {
