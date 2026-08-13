@@ -65,6 +65,7 @@ interface HostAccess {
   searchLeadId: string | null;
   searchCoverId: string | null;
   searchOverwatchId: string | null;
+  canSeePlayer: (member: HostMember) => boolean;
   tryFire: (member: HostMember, target: GridPoint, reason: string) => void;
   tryGrenade: (member: HostMember) => boolean;
   refreshTacticalPlan: () => void;
@@ -85,27 +86,28 @@ interface V8Access {
 }
 
 const FRESH_LKP_FIRE_TICKS = 6;
-const LKP_VERIFY_RANGE = 6.5;
+const LKP_VERIFY_RANGE = 8.5;
 const LKP_VERIFY_TICKS = 3;
-const STATIONARY_DIRECTION_CLEAR_TICKS = 5;
 const FIRE_DISCIPLINE_LOG_COOLDOWN = 8;
 
 /**
- * V15 turns the last-known point into a contact hypothesis instead of a
+ * V15 turns the Last Known Position into a contact hypothesis instead of a
  * permanent attack coordinate.
  *
- * - exact player coordinates are sampled only while an operational member has
- *   confirmed visual contact;
- * - the last two confirmed visual samples produce an egress direction;
- * - LOS + scan time can verify that the LKP is empty (negative evidence);
- * - stale/cleared LKP rifle fire is withheld;
- * - sweep flash grenades are redirected toward the directional search frontier;
- * - cleared search nodes survive ordinary tactical replans inside one contact
- *   episode;
- * - reacquisition hysteresis scales with the number of living soldiers;
- * - dead/recovery-critical soldiers cannot keep a stale logistics assignment.
+ * Exact player coordinates enter this layer only after the Host's authoritative
+ * LOS/FOV query confirms visual contact for an operational soldier. Agent
+ * belief telemetry is deliberately not used as the permission to sample the
+ * live player position because belief can remain true for a stale decision
+ * frame after LOS has already broken.
  *
- * Geometry, LOS, search points and fire policy remain Workbench Host concerns.
+ * Search follows a two-stage contract:
+ * 1. verify the last confirmed point with real LOS + scan evidence;
+ * 2. after negative evidence clears that point, expand the frontier along the
+ *    last direction that was actually observed while the target was visible.
+ *
+ * Geometry, LOS, search points, fire permission and grenade-space control stay
+ * inside the Workbench Host. Hidden live player position is never copied into
+ * portable cognition after visual loss.
  */
 export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   private episodeId = 0;
@@ -113,8 +115,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   private lastConfirmedPosition: GridPoint | null = null;
   private lastConfirmedTick: number | null = null;
   private egressDirection: GridPoint | null = null;
-  private stationaryConfirmedTicks = 0;
   private contactWasVisible = false;
+  private lastTrackSampleTick = -1;
   private lkpCleared = false;
   private lkpClearedTick: number | null = null;
   private lkpVerificationTicks = 0;
@@ -123,6 +125,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   private clearedSearchNodes = new Map<string, GridPoint>();
   private lastSearchIndex = new Map<string, number>();
   private reacquireStableTicks = 0;
+  private lastReacquireTick = -1;
   private fireDisciplineLogTick = new Map<string, number>();
 
   constructor() {
@@ -131,7 +134,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     const host = this.v15Host();
     host.pushEvent('V15: contact hypotheses, negative evidence, directional search and stale-LKP fire discipline enabled.');
     host.log('system', 'simulation', 'Volition Simulation', 'session', 'V15 contact-memory / directional-search layer enabled.', {
-      hiddenTargetPolicy: 'confirmed_visual_samples_only_for_exact_track',
+      hiddenTargetPolicy: 'authoritative_host_visual_only_for_exact_track',
       freshLkpFireTicks: FRESH_LKP_FIRE_TICKS,
       lkpVerifyTicks: LKP_VERIFY_TICKS,
     });
@@ -149,6 +152,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   }
 
   override advance(deltaSeconds: number): TacticalWizardSimulationState {
+    // Sample once before and once after the parent frame. lastTrackSampleTick
+    // prevents repeated motion-frame observations from erasing a useful egress
+    // direction while the decision tick has not advanced.
     this.observeConfirmedContact(super.getState());
     super.advance(deltaSeconds);
     const state = super.getState();
@@ -170,7 +176,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     const base = super.getState();
     const frontier = this.currentFrontier();
     const lostTicks = this.lastConfirmedTick === null ? 0 : Math.max(0, base.logicalTick - this.lastConfirmedTick);
-    const visible = base.agents.some((agent) => agent.alive && agent.targetVisible);
+    const visible = this.hasConfirmedHostVisual(base);
     const status: ContactTrackStatus = this.lastConfirmedPosition === null
       ? 'none'
       : visible
@@ -209,6 +215,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     const originalRefreshPlan = host.refreshTacticalPlan.bind(this);
     host.refreshTacticalPlan = (): void => {
       originalRefreshPlan();
+      // Do not immediately fan out along the inferred direction. The squad
+      // first has to produce negative evidence that the old LKP is actually
+      // empty. This keeps the search readable and prevents premature guesses.
       this.applyDirectionalSweepPlan();
     };
 
@@ -224,9 +233,13 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
 
     const originalTryGrenade = host.tryGrenade.bind(this);
     host.tryGrenade = (member: HostMember): boolean => {
-      if (host.tactic !== 'sweep' || this.anyOperationalVisual()) return originalTryGrenade(member);
+      if (host.tactic !== 'sweep' || this.memberHasConfirmedHostVisual(member.id)) return originalTryGrenade(member);
+      // Before the LKP is cleared a flash at the fresh uncertainty point can be
+      // a valid probe. Once that point is verified empty, never throw at it
+      // again; redirect the opportunity to an uncleared search frontier.
+      if (!this.lkpCleared) return originalTryGrenade(member);
       const frontier = this.memberFrontier(member);
-      if (frontier === null) return this.lkpCleared ? false : originalTryGrenade(member);
+      if (frontier === null) return false;
 
       const previous = host.sharedLastKnownPosition;
       host.sharedLastKnownPosition = { ...frontier };
@@ -239,8 +252,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   }
 
   private observeConfirmedContact(state: TacticalWizardSimulationStateV14): void {
-    const visibleAgents = state.agents.filter((agent) => agent.alive && agent.targetVisible);
-    const visible = visibleAgents.length > 0;
+    if (state.logicalTick === this.lastTrackSampleTick) return;
+    this.lastTrackSampleTick = state.logicalTick;
+    const visibleIds = this.confirmedHostVisualIds(state);
+    const visible = visibleIds.length > 0;
+
     if (!visible) {
       if (this.contactWasVisible) {
         this.contactWasVisible = false;
@@ -258,6 +274,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
       return;
     }
 
+    // This is the only exact-position sampling gate in the contact-track layer.
+    // It is reached only after Host LOS/FOV, not Agent belief, returned true.
     const point = { ...state.player };
     const shouldStartEpisode = !this.contactWasVisible
       && (this.lastConfirmedPosition === null || this.lkpCleared || distance(this.lastConfirmedPosition, point) > 4.5);
@@ -274,11 +292,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     if (this.lastConfirmedPosition === null || distance(this.lastConfirmedPosition, point) >= 0.15) {
       this.previousConfirmedPosition = clonePoint(this.lastConfirmedPosition);
       this.lastConfirmedPosition = point;
-      this.egressDirection = deriveEgressDirection(this.previousConfirmedPosition, this.lastConfirmedPosition);
-      this.stationaryConfirmedTicks = 0;
-    } else {
-      this.stationaryConfirmedTicks += 1;
-      if (this.stationaryConfirmedTicks >= STATIONARY_DIRECTION_CLEAR_TICKS) this.egressDirection = null;
+      const derived = deriveEgressDirection(this.previousConfirmedPosition, this.lastConfirmedPosition);
+      // Keep the last meaningful observed movement direction until a later
+      // confirmed movement sample replaces it. Standing still does not destroy
+      // useful evidence about the direction in which the target last moved.
+      if (derived !== null) this.egressDirection = derived;
     }
     this.lastConfirmedTick = state.logicalTick;
     this.contactWasVisible = true;
@@ -287,17 +305,16 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   }
 
   private evaluateNegativeEvidence(state: TacticalWizardSimulationStateV14): void {
-    if (this.lastConfirmedPosition === null || this.lkpCleared || this.anyOperationalVisual() || state.squad.tactic !== 'sweep') return;
+    if (this.lastConfirmedPosition === null || this.lkpCleared || this.hasConfirmedHostVisual(state) || state.squad.tactic !== 'sweep') return;
     if (state.logicalTick === this.lastVerificationTick) return;
     this.lastVerificationTick = state.logicalTick;
 
     const lkpCell = toCell(this.lastConfirmedPosition);
     const witnesses = state.agents.filter((agent) => agent.alive
-      && !agent.targetVisible
       && (agent.task === 'search_sector' || agent.task === 'overwatch' || agent.buddyRole === 'cover')
       && distance(agent.position, this.lastConfirmedPosition!) <= LKP_VERIFY_RANGE
       && hasLineOfSight(tacticalWizardNavigationGrid, toCell(agent.position), lkpCell)
-      && (agent.searchProgress > 0.03 || agent.task === 'overwatch'));
+      && (agent.searchProgress > 0.03 || agent.task === 'overwatch' || distance(agent.position, this.lastConfirmedPosition!) <= 3));
 
     if (witnesses.length === 0) {
       this.lkpVerificationTicks = Math.max(0, this.lkpVerificationTicks - 1);
@@ -317,7 +334,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
       lastConfirmedPosition: { ...this.lastConfirmedPosition },
       egressDirection: clonePoint(this.egressDirection),
       verifiedBy: [...this.verifiedBy],
-      nextPolicy: 'directional_search_frontier',
+      nextPolicy: this.egressDirection === null ? 'radial_search_fallback' : 'directional_search_frontier',
     });
     this.applyDirectionalSweepPlan();
   }
@@ -343,7 +360,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
 
   private applyDirectionalSweepPlan(): void {
     const host = this.v15Host();
-    if (host.tactic !== 'sweep' || this.lastConfirmedPosition === null || this.egressDirection === null) return;
+    if (host.tactic !== 'sweep' || !this.lkpCleared || this.lastConfirmedPosition === null || this.egressDirection === null) return;
     const cleared = new Set(this.clearedSearchNodes.keys());
     const assignments: Array<{ readonly id: string | null; readonly lane: 0 | 1 | 2 }> = [
       { id: host.searchLeadId, lane: 0 },
@@ -376,19 +393,23 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
 
   private applyAdaptiveReacquisition(state: TacticalWizardSimulationStateV14): void {
     const living = state.agents.filter((agent) => agent.alive);
-    const visible = living.some((agent) => agent.targetVisible);
-    this.reacquireStableTicks = visible ? this.reacquireStableTicks + 1 : 0;
+    const visible = this.hasConfirmedHostVisual(state);
+    if (state.logicalTick !== this.lastReacquireTick) {
+      this.lastReacquireTick = state.logicalTick;
+      this.reacquireStableTicks = visible ? this.reacquireStableTicks + 1 : 0;
+    }
     if (!visible || state.squad.tactic !== 'sweep') return;
+
     const required = living.length <= 1 ? 1 : living.length === 2 ? 2 : 3;
     if (this.reacquireStableTicks < required) return;
 
     const host = this.v15Host();
     host.tactic = 'bounding';
     host.tacticStartedTick = host.logicalTick;
-    host.tacticReason = `Confirmed reacquisition held ${this.reacquireStableTicks}/${required} ticks; search contract released back to direct-contact tactics.`;
+    host.tacticReason = `Confirmed reacquisition held ${this.reacquireStableTicks}/${required} decision ticks; search contract released back to direct-contact tactics.`;
     host.applyRoles();
     host.refreshTacticalPlan();
-    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'tactic', 'Directional search ended after stable visual reacquisition.', {
+    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'tactic', 'Directional search ended after stable Host-confirmed visual reacquisition.', {
       livingMembers: living.length,
       stableTicks: this.reacquireStableTicks,
       requiredTicks: required,
@@ -415,14 +436,13 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
 
   private classifyTarget(target: GridPoint): ContactTargetKind {
     const state = super.getState();
-    const visible = state.agents.some((agent) => agent.alive && agent.targetVisible) ? state.player : null;
     return classifyContactTarget({
       target,
       currentTick: state.logicalTick,
       lastConfirmedTick: this.lastConfirmedTick,
       lastConfirmedPosition: this.lastConfirmedPosition,
       lkpCleared: this.lkpCleared,
-      confirmedVisiblePosition: visible,
+      confirmedVisiblePosition: this.hasConfirmedHostVisual(state) ? state.player : null,
       coarseFireSector: state.threatResponse.estimatedSector,
       searchFrontier: this.currentFrontier(),
       freshLkpTicks: FRESH_LKP_FIRE_TICKS,
@@ -430,10 +450,12 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
   }
 
   private fireAllowed(member: HostMember, kind: ContactTargetKind, reason: string): boolean {
-    if (kind === 'confirmed_visual') return true;
+    if (kind === 'confirmed_visual') return this.memberHasConfirmedHostVisual(member.id);
     if (kind === 'fresh_lkp') return true;
+    if (kind === 'stale_lkp') return !this.lkpCleared && /counter|rescue security/i.test(reason);
     if (kind === 'coarse_fire_sector') return /counter|rescue security/i.test(reason);
-    if (kind === 'unknown') return member.targetVisible;
+    if (kind === 'unknown') return this.memberHasConfirmedHostVisual(member.id);
+    // cleared_lkp and search_frontier are information/search targets, not rifle targets.
     return false;
   }
 
@@ -451,6 +473,25 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
       lkpCleared: this.lkpCleared,
       egressDirection: clonePoint(this.egressDirection),
     });
+  }
+
+  private confirmedHostVisualIds(state: TacticalWizardSimulationStateV14): readonly string[] {
+    const alive = new Set(state.agents.filter((agent) => agent.alive).map((agent) => agent.id));
+    const host = this.v15Host();
+    return host.members
+      .filter((member) => alive.has(member.id) && host.canSeePlayer(member))
+      .map((member) => member.id);
+  }
+
+  private hasConfirmedHostVisual(state: TacticalWizardSimulationStateV14 = super.getState()): boolean {
+    return this.confirmedHostVisualIds(state).length > 0;
+  }
+
+  private memberHasConfirmedHostVisual(id: string, state: TacticalWizardSimulationStateV14 = super.getState()): boolean {
+    if (state.agents.find((agent) => agent.id === id)?.alive !== true) return false;
+    const host = this.v15Host();
+    const member = host.members.find((entry) => entry.id === id);
+    return member !== undefined && host.canSeePlayer(member);
   }
 
   private currentFrontier(): readonly GridPoint[] {
@@ -482,18 +523,14 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     return this.currentFrontier()[0] ?? null;
   }
 
-  private anyOperationalVisual(): boolean {
-    return super.getState().agents.some((agent) => agent.alive && agent.targetVisible);
-  }
-
   private resetContactTrack(): void {
     this.episodeId = 0;
     this.previousConfirmedPosition = null;
     this.lastConfirmedPosition = null;
     this.lastConfirmedTick = null;
     this.egressDirection = null;
-    this.stationaryConfirmedTicks = 0;
     this.contactWasVisible = false;
+    this.lastTrackSampleTick = -1;
     this.lkpCleared = false;
     this.lkpClearedTick = null;
     this.lkpVerificationTicks = 0;
@@ -502,6 +539,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV14 {
     this.clearedSearchNodes.clear();
     this.lastSearchIndex.clear();
     this.reacquireStableTicks = 0;
+    this.lastReacquireTick = -1;
     this.fireDisciplineLogTick.clear();
   }
 
