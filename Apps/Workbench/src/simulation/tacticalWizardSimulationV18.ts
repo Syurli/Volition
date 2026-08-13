@@ -142,6 +142,11 @@ interface DynamicRecoveryGeometry {
   lastReplanReason: RecoveryReplanReason;
 }
 
+interface ContactTrackSlice {
+  readonly lastConfirmedPosition: GridPoint | null;
+  readonly lkpCleared: boolean;
+}
+
 const V18_VISION_RANGE = 16;
 const V18_HEARING_RADIUS = 28;
 const V18_PLAYER_WEAPON_RANGE = 26;
@@ -167,12 +172,6 @@ const STALE_THREAT_TICKS = 56;
 const GUNSHOT_EPISODE_GAP_TICKS = 5;
 const EXTENDED_FIRE_INTERVAL_TICKS = 4;
 
-/**
- * V18 makes recovery geometry and movement orientation respond to battlefield
- * changes instead of treating the first rescue points as permanent anchors.
- * Recovery planning remains Host-owned and consumes only a live Host-confirmed
- * visual target, an already-coarsened incoming-fire sector, or contact memory.
- */
 export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
   private dynamicRecoveryGeometry: DynamicRecoveryGeometry | null = null;
   private recoveryRevisionCounter = 0;
@@ -546,11 +545,14 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     const host = this.v18Host();
     const visible = host.members.some((member) => state.agents.some((agent) => agent.id === member.id && agent.alive) && host.canSeePlayer(member));
     if (visible) return { point: { ...state.player }, source: 'confirmed_visual' };
-    if (state.threatResponse.active && state.threatResponse.estimatedSector !== null) {
+
+    const transitional = state as TacticalWizardSimulationStateV17 & { readonly contactTrack?: ContactTrackSlice };
+    if (state.threatResponse?.active && state.threatResponse.estimatedSector !== null) {
       return { point: { ...state.threatResponse.estimatedSector }, source: 'incoming_sector' };
     }
-    if (state.contactTrack.lastConfirmedPosition !== null && !state.contactTrack.lkpCleared) {
-      return { point: { ...state.contactTrack.lastConfirmedPosition }, source: 'contact_memory' };
+    const contactTrack = transitional.contactTrack;
+    if (contactTrack?.lastConfirmedPosition !== null && contactTrack?.lastConfirmedPosition !== undefined && !contactTrack.lkpCleared) {
+      return { point: { ...contactTrack.lastConfirmedPosition }, source: 'contact_memory' };
     }
     if (state.squad.sharedLastKnownPosition !== null) {
       return { point: { ...state.squad.sharedLastKnownPosition }, source: 'contact_memory' };
