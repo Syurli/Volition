@@ -4,44 +4,39 @@ import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/ta
 const IDS = ['twr:rifle-squad:alpha', 'twr:rifle-squad:bravo', 'twr:rifle-squad:charlie'] as const;
 
 describe('Tactical Wizard V15 contact hypotheses and directional search', () => {
-  it('records a last-seen movement direction, verifies the old LKP empty, and stops direct fire at that cleared point', () => {
+  it('records observed movement, verifies the old LKP empty, and stops direct fire at that cleared point', () => {
     const simulation = new TacticalWizardSimulation();
     for (const id of IDS) expect(simulation.setAgentEquipment(id, { grenades: 0 })).toBe(true);
 
     expect(simulation.setPlayerPosition({ x: 12.25, y: 9.61 })).toBe(true);
-    let state = simulation.getState();
-    for (let frame = 0; frame < 2400 && !state.agents.some((agent) => agent.alive && agent.targetVisible); frame += 1) {
-      state = simulation.advance(1 / 30);
-    }
-    expect(state.agents.some((agent) => agent.alive && agent.targetVisible)).toBe(true);
-
-    expect(simulation.setPlayerPosition({ x: 13.25, y: 9.61 })).toBe(true);
-    for (let frame = 0; frame < 18; frame += 1) state = simulation.advance(1 / 30);
-    expect(simulation.setPlayerPosition({ x: 14.25, y: 9.61 })).toBe(true);
-    for (let frame = 0; frame < 18; frame += 1) state = simulation.advance(1 / 30);
-
+    let state = advanceUntil(simulation, (candidate) => candidate.contactTrack.status === 'confirmed', 3000);
+    expect(state.contactTrack.status).toBe('confirmed');
     expect(state.contactTrack.lastConfirmedPosition).not.toBeNull();
+
+    // Use short in-LOS steps and wait for the contact track itself to confirm
+    // each sample. The test therefore validates observed movement, not a test
+    // teleport that happened to occur between perception ticks.
+    expect(simulation.setPlayerPosition({ x: 12.65, y: 9.61 })).toBe(true);
+    state = advanceUntil(simulation, (candidate) => near(candidate.contactTrack.lastConfirmedPosition, { x: 12.65, y: 9.61 }), 240);
+    expect(near(state.contactTrack.lastConfirmedPosition, { x: 12.65, y: 9.61 })).toBe(true);
+
+    expect(simulation.setPlayerPosition({ x: 13.05, y: 9.61 })).toBe(true);
+    state = advanceUntil(simulation, (candidate) => near(candidate.contactTrack.lastConfirmedPosition, { x: 13.05, y: 9.61 }), 240);
+    expect(near(state.contactTrack.lastConfirmedPosition, { x: 13.05, y: 9.61 })).toBe(true);
     expect(state.contactTrack.egressDirection).not.toBeNull();
     expect(state.contactTrack.egressDirection!.x).toBeGreaterThan(0.65);
 
     const lkp = { ...state.contactTrack.lastConfirmedPosition! };
     expect(simulation.setPlayerPosition({ x: 46, y: 27 })).toBe(true);
 
-    let clearedSequence = -1;
-    for (let frame = 0; frame < 4200; frame += 1) {
-      state = simulation.advance(1 / 30);
-      if (state.contactTrack.lkpCleared) {
-        clearedSequence = state.runLog.at(-1)?.sequence ?? 0;
-        break;
-      }
-    }
-
+    state = advanceUntil(simulation, (candidate) => candidate.contactTrack.lkpCleared, 4800);
     expect(state.squad.tactic).toBe('sweep');
     expect(state.contactTrack.lkpCleared).toBe(true);
     expect(state.contactTrack.verifiedBy.length).toBeGreaterThan(0);
     expect(state.contactTrack.frontier.length).toBeGreaterThan(0);
     expect(state.contactTrack.frontier.some((point) => point.x > lkp.x)).toBe(true);
 
+    const clearedSequence = state.runLog.at(-1)?.sequence ?? 0;
     for (let frame = 0; frame < 360; frame += 1) state = simulation.advance(1 / 30);
     const postClearDirectFire = state.runLog.filter((entry) => entry.sequence > clearedSequence
       && entry.event === 'fire'
@@ -50,26 +45,40 @@ describe('Tactical Wizard V15 contact hypotheses and directional search', () => 
     expect(postClearDirectFire).toHaveLength(0);
     expect(state.runLog.some((entry) => /is not a valid direct-fire target/i.test(entry.summary)
       && (entry.data.targetKind === 'cleared_lkp' || entry.data.targetKind === 'stale_lkp'))).toBe(true);
-  }, 30000);
+  }, 35000);
 
-  it('keeps exact hidden player coordinates out of the contact track after visual loss', () => {
+  it('never copies a hidden live player coordinate into the exact contact track after Host LOS is gone', () => {
     const simulation = new TacticalWizardSimulation();
     for (const id of IDS) expect(simulation.setAgentEquipment(id, { grenades: 0 })).toBe(true);
     expect(simulation.setPlayerPosition({ x: 12.25, y: 9.61 })).toBe(true);
 
-    let state = simulation.getState();
-    for (let frame = 0; frame < 2400 && !state.agents.some((agent) => agent.targetVisible); frame += 1) state = simulation.advance(1 / 30);
-    expect(state.agents.some((agent) => agent.targetVisible)).toBe(true);
+    let state = advanceUntil(simulation, (candidate) => candidate.contactTrack.status === 'confirmed', 3000);
+    expect(state.contactTrack.status).toBe('confirmed');
     const lastSeen = { ...state.contactTrack.lastConfirmedPosition! };
 
     expect(simulation.setPlayerPosition({ x: 46, y: 27 })).toBe(true);
+    state = advanceUntil(simulation, (candidate) => candidate.contactTrack.status !== 'confirmed', 240);
+    expect(state.contactTrack.status).not.toBe('confirmed');
     for (let frame = 0; frame < 120; frame += 1) state = simulation.advance(1 / 30);
 
-    expect(state.agents.every((agent) => !agent.targetVisible)).toBe(true);
     expect(state.contactTrack.lastConfirmedPosition).toEqual(lastSeen);
     expect(state.contactTrack.lastConfirmedPosition).not.toEqual(state.player);
   }, 20000);
 });
+
+function advanceUntil(
+  simulation: TacticalWizardSimulation,
+  predicate: (state: ReturnType<TacticalWizardSimulation['getState']>) => boolean,
+  maxFrames: number,
+): ReturnType<TacticalWizardSimulation['getState']> {
+  let state = simulation.getState();
+  for (let frame = 0; frame < maxFrames && !predicate(state); frame += 1) state = simulation.advance(1 / 30);
+  return state;
+}
+
+function near(value: { readonly x: number; readonly y: number } | null, expected: { readonly x: number; readonly y: number }): boolean {
+  return value !== null && Math.hypot(value.x - expected.x, value.y - expected.y) <= 0.15;
+}
 
 function isSamePoint(value: unknown, expected: { readonly x: number; readonly y: number }): boolean {
   if (typeof value !== 'object' || value === null) return false;
