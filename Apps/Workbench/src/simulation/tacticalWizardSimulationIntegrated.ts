@@ -1,4 +1,4 @@
-import { hasLineOfSight, type GridPoint } from './navigation';
+import { findPath, hasLineOfSight, type GridPoint } from './navigation';
 import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from './tacticalWizardTestMapV7';
 import {
   TacticalWizardSimulation as TacticalWizardSimulationV18,
@@ -101,11 +101,15 @@ const WOUNDED_RATIO = 0.5;
 const CRITICAL_RATIO = 0.25;
 const COHESION_RELEASE_DISTANCE = 7.5;
 const COHESION_RELEASE_SETTLE_TICKS = 4;
+const COHESION_DESIRED_DISTANCE = 3.8;
+const COHESION_SUPPORT_MAX_DISTANCE = 4.5;
+const CRITICAL_AMMO_ROUNDS = 12;
 const MOVEMENT_COMMIT_FRAMES = 12;
 const MOVEMENT_SMALL_RETARGET_DISTANCE = 1.5;
 const LOCOMOTION_HOLD_FRAMES = 5;
 const FACING_MAX_DEGREES_PER_MOTION_FRAME = 16;
 const STABLE_TRAVEL_TASKS = new Set(['hold_cover', 'search_sector', 'overwatch', 'regroup']);
+const MOBILE_TACTICAL_TASKS = new Set(['bound_to_cover', 'flank_to_cover', 'crossfire', 'regroup', 'search_sector']);
 
 /**
  * Integration/stability layer for the current Tactical Wizard example.
@@ -116,8 +120,9 @@ const STABLE_TRAVEL_TASKS = new Set(['hold_cover', 'search_sector', 'overwatch',
  * - one rifle-shot episode keeps one coarse acoustic estimate per listener;
  * - the V18 22..26 range extension receives the same near-miss / impact semantics
  *   as the original V9 rifle trace instead of becoming hit-only space;
- * - wounded mutual support has entry/exit hysteresis and keeps its committed
- *   geometry instead of being recreated at the isolation threshold every frame;
+ * - wounded mutual support is a movement constraint rather than a permanent task
+ *   owner, while critical casualties still retain the hard rally contract;
+ * - low-level movement commitments never write back into planner tactical targets;
  * - non-urgent tactical travel gets a short movement/mode commitment budget;
  * - facing changes are rate-limited at the motion-frame boundary.
  */
@@ -138,7 +143,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     this.integratedHost().log('system', 'simulation', 'Volition Simulation', 'session', 'Integrated combat-stability layer enabled.', {
       tacticsAdded: 0,
       acousticPolicy: 'stable_per_listener_estimate_within_gunshot_episode',
-      movementPolicy: 'single_short_lived_execution_commitment_for_non_urgent_travel',
+      movementPolicy: 'planner_target_preserved_with_short_execution_commitment',
+      cohesionPolicy: 'wounded_support_constraint_critical_hard_rally',
       facingPolicy: 'rate_limited_motion_frame_output',
     });
   }
@@ -201,12 +207,29 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
 
   private installCohesionHysteresis(): void {
     const internals = this.cohesionInternals();
+    const host = this.integratedHost();
     const originalMaintain = internals.maintainWoundedSupport.bind(this);
     internals.maintainWoundedSupport = (state: TacticalWizardSimulationStateV18): void => {
       const plan = internals.woundedPlan;
       if (plan === null) {
         this.cohesionReleaseCandidateSinceTick = null;
+        const executionBefore = new Map(host.members.map((member) => [member.id, {
+          task: member.task,
+          role: member.role,
+          tacticalTarget: clonePoint(member.tacticalTarget),
+        }]));
         originalMaintain(state);
+        const created = internals.woundedPlan;
+        if (created === null) return;
+        const patient = state.agents.find((agent) => agent.id === created.patientId);
+        const patientMember = host.members.find((member) => member.id === created.patientId);
+        const previousExecution = executionBefore.get(created.patientId);
+        const healthRatio = patient === undefined || patient.maxHealth <= 0 ? 0 : patient.health / patient.maxHealth;
+        if (patientMember !== undefined && previousExecution !== undefined && healthRatio > CRITICAL_RATIO) {
+          patientMember.task = previousExecution.task;
+          patientMember.role = previousExecution.role;
+          patientMember.tacticalTarget = clonePoint(previousExecution.tacticalTarget);
+        }
         return;
       }
 
@@ -218,14 +241,24 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
         return;
       }
 
+      const healthRatio = patient.maxHealth <= 0 ? 0 : patient.health / patient.maxHealth;
+      if (healthRatio <= CRITICAL_RATIO) {
+        this.cohesionReleaseCandidateSinceTick = null;
+        originalMaintain(state);
+        return;
+      }
+
       const decision = shouldRetainWoundedSupport({
-        healthRatio: patient.maxHealth <= 0 ? 0 : patient.health / patient.maxHealth,
+        healthRatio,
         buddyDistance: distance(patient.position, buddy.position),
         logicalTick: state.logicalTick,
         releaseCandidateSinceTick: this.cohesionReleaseCandidateSinceTick,
       });
       this.cohesionReleaseCandidateSinceTick = decision.releaseCandidateSinceTick;
-      if (decision.retain) return;
+      if (decision.retain) {
+        plan.buddySupportPoint = selectCohesionSupportWaypoint(patient.position, buddy.position);
+        return;
+      }
 
       this.cohesionReleaseCandidateSinceTick = null;
       originalMaintain(state);
@@ -236,7 +269,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     const host = this.integratedHost();
     const originalMovementTarget = host.movementTarget.bind(this);
     host.movementTarget = (member: HostMember): GridPoint | null => {
-      const proposed = originalMovementTarget(member);
+      const plannerTarget = clonePoint(member.tacticalTarget);
+      const originalProposal = originalMovementTarget(member);
+      const cohesionProposal = this.resolveCohesionMovementProposal(member, originalProposal, plannerTarget);
+      const proposed = this.recoverMobilePlannerTarget(member, cohesionProposal, plannerTarget);
+
       if (!STABLE_TRAVEL_TASKS.has(member.task) || member.targetVisible || this.hasUrgentMovementOwner(member.id)) {
         return this.acceptMovementTarget(member, proposed);
       }
@@ -247,7 +284,6 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
           && prior.task === member.task
           && host.motionFrame < prior.untilFrame
           && distance(member.position, prior.target) > 0.8) {
-          member.tacticalTarget = { ...prior.target };
           return { ...prior.target };
         }
         this.movementCommitments.delete(member.id);
@@ -258,7 +294,6 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
       if (distance(prior.target, proposed) <= MOVEMENT_SMALL_RETARGET_DISTANCE) return this.acceptMovementTarget(member, proposed);
       if (host.motionFrame >= prior.untilFrame) return this.acceptMovementTarget(member, proposed);
 
-      member.tacticalTarget = { ...prior.target };
       return { ...prior.target };
     };
   }
@@ -331,6 +366,49 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     });
   }
 
+  private resolveCohesionMovementProposal(member: HostMember, proposed: GridPoint | null, plannerTarget: GridPoint | null): GridPoint | null {
+    const plan = this.cohesionInternals().woundedPlan;
+    if (plan === null) return proposed;
+    const state = super.getState();
+    const patient = state.agents.find((agent) => agent.id === plan.patientId);
+    const buddy = state.agents.find((agent) => agent.id === plan.buddyId);
+    if (patient === undefined || buddy === undefined || !patient.alive || !buddy.alive) return proposed;
+
+    if (member.id === plan.patientId) {
+      const healthRatio = patient.maxHealth <= 0 ? 0 : patient.health / patient.maxHealth;
+      if (healthRatio <= CRITICAL_RATIO) return proposed;
+      return plannerTarget ?? proposed;
+    }
+
+    if (member.id === plan.buddyId) {
+      const buddyAgent = state.agents.find((agent) => agent.id === member.id);
+      const criticalResupply = buddyAgent !== undefined
+        && buddyAgent.logisticsTask !== 'none'
+        && buddyAgent.ammoRounds <= CRITICAL_AMMO_ROUNDS;
+      if (criticalResupply) return proposed;
+
+      const buddyTooFar = distance(buddy.position, patient.position) > COHESION_SUPPORT_MAX_DISTANCE;
+      const plannerWouldBreakSupport = plannerTarget !== null && distance(plannerTarget, patient.position) > COHESION_RELEASE_DISTANCE;
+      if (buddyTooFar || plannerWouldBreakSupport) {
+        const supportPoint = selectCohesionSupportWaypoint(patient.position, buddy.position);
+        plan.buddySupportPoint = { ...supportPoint };
+        return supportPoint;
+      }
+      return plannerTarget ?? proposed;
+    }
+
+    return proposed;
+  }
+
+  private recoverMobilePlannerTarget(member: HostMember, proposed: GridPoint | null, plannerTarget: GridPoint | null): GridPoint | null {
+    if (proposed !== null) return proposed;
+    if (plannerTarget === null) return null;
+    if (!MOBILE_TACTICAL_TASKS.has(member.task)) return null;
+    if (this.hasUrgentMovementOwner(member.id)) return null;
+    if (distance(member.position, plannerTarget) <= 0.8) return null;
+    return { ...plannerTarget };
+  }
+
   private acceptMovementTarget(member: HostMember, target: GridPoint | null): GridPoint | null {
     if (target === null) {
       this.movementCommitments.delete(member.id);
@@ -338,7 +416,6 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     }
     const committed = { task: member.task, target: { ...target }, untilFrame: this.integratedHost().motionFrame + MOVEMENT_COMMIT_FRAMES };
     this.movementCommitments.set(member.id, committed);
-    member.tacticalTarget = { ...target };
     return { ...target };
   }
 
@@ -365,6 +442,20 @@ export function shouldRetainWoundedSupport(input: WoundedSupportRetentionInput):
   const since = input.releaseCandidateSinceTick ?? input.logicalTick;
   if (input.logicalTick - since < COHESION_RELEASE_SETTLE_TICKS) return { retain: true, releaseCandidateSinceTick: since };
   return { retain: false, releaseCandidateSinceTick: since };
+}
+
+function selectCohesionSupportWaypoint(patient: GridPoint, buddy: GridPoint): GridPoint {
+  const start = toCell(buddy);
+  const goal = toCell(patient);
+  const path = findPath(tacticalWizardNavigationGrid, start, goal);
+  if (path.length === 0) return goal;
+  const candidates = path.filter((point) => {
+    const patientDistance = distance(point, patient);
+    return patientDistance >= 1.8 && patientDistance <= COHESION_SUPPORT_MAX_DISTANCE;
+  });
+  if (candidates.length === 0) return path[Math.max(0, path.length - 2)] ?? goal;
+  candidates.sort((left, right) => Math.abs(distance(left, patient) - COHESION_DESIRED_DISTANCE) - Math.abs(distance(right, patient) - COHESION_DESIRED_DISTANCE));
+  return { ...candidates[0]! };
 }
 
 function isRifleShotNoise(value: unknown): value is { readonly kind: 'noise'; readonly actionKind: 'rifle_shot'; readonly perceivedPosition?: unknown; readonly [key: string]: unknown } {
@@ -413,6 +504,10 @@ function clampWorld(point: GridPoint): GridPoint {
     x: Math.max(0, Math.min(tacticalWizardTestMap.width - 0.01, point.x)),
     y: Math.max(0, Math.min(tacticalWizardTestMap.height - 0.01, point.y)),
   };
+}
+
+function clonePoint(point: GridPoint | null): GridPoint | null {
+  return point === null ? null : { ...point };
 }
 
 function normalize(point: GridPoint): GridPoint {
