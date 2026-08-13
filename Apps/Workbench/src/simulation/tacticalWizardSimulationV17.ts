@@ -265,7 +265,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
 
   override getState(): TacticalWizardSimulationState {
     const base = super.getState();
-    const visualIds = this.confirmedVisualIds(base);
+    const visualIds = this.v17ConfirmedVisualIds(base);
     const leadership = this.leadershipFor(base);
     const threatLevel: ThreatAwarenessLevel = visualIds.length > 0
       ? 'confirmed'
@@ -455,13 +455,14 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
     for (const { agent, sample } of candidates) {
       let kind: ThreatEvidenceKind | null = null;
       let weight = 0;
-      if (sample.distance <= PLAYER_NEAR_MISS_STRONG) {
+      const ballisticClear = hasLineOfSight(tacticalWizardNavigationGrid, toCell(from), toCell(agent.position));
+      if (ballisticClear && sample.distance <= PLAYER_NEAR_MISS_STRONG) {
         kind = 'near_miss';
         weight = 0.52;
-      } else if (sample.distance <= PLAYER_NEAR_MISS_WEAK) {
+      } else if (ballisticClear && sample.distance <= PLAYER_NEAR_MISS_WEAK) {
         kind = 'near_miss';
         weight = 0.34;
-      } else if (distance(agent.position, to) <= PLAYER_IMPACT_AWARENESS) {
+      } else if (ballisticClear && distance(agent.position, to) <= PLAYER_IMPACT_AWARENESS) {
         kind = 'bullet_impact';
         weight = 0.2;
       } else if (distance(agent.position, from) <= PLAYER_GUNSHOT_HEARING) {
@@ -515,7 +516,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
 
   private maybeEscalateThreat(state: TacticalWizardSimulationStateV16, agentId: string, exactShotOrigin: GridPoint): void {
     if (this.threat.confidence < THREAT_ESCALATE) return;
-    if (this.confirmedVisualIds(state).length > 0) return;
+    if (this.v17ConfirmedVisualIds(state).length > 0) return;
     if (state.logicalTick - this.lastThreatResponseTick < THREAT_RESPONSE_COOLDOWN_TICKS) return;
     if (!state.agents.some((agent) => agent.id === agentId && agent.alive)) return;
 
@@ -539,7 +540,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
     if (state.logicalTick === this.lastThreatDecayTick) return;
     const elapsed = this.lastThreatDecayTick < 0 ? 0 : Math.max(0, state.logicalTick - this.lastThreatDecayTick);
     this.lastThreatDecayTick = state.logicalTick;
-    if (this.confirmedVisualIds(state).length > 0) return;
+    if (this.v17ConfirmedVisualIds(state).length > 0) return;
     if (elapsed <= 0 || this.threat.confidence <= 0) return;
     this.threat.confidence = Math.max(0, this.threat.confidence - THREAT_DECAY_PER_TICK * elapsed);
     if (this.threat.confidence < 0.05 && this.threat.lastEvidenceTick !== state.logicalTick) {
@@ -637,7 +638,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
   }
 
   private throwablePrecheck(member: HostMember, state: TacticalWizardSimulationStateV16): boolean {
-    const visuals = this.confirmedVisualIds(state);
+    const visuals = this.v17ConfirmedVisualIds(state);
     const liveContact = visuals.length > 0;
     if (liveContact) {
       const friendlyRisk = state.agents.some((agent) => agent.alive && agent.id !== member.id && distance(agent.position, state.player) <= 4.0);
@@ -672,7 +673,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
         .map((agent) => agent.id);
     if (friendliesAtRisk.length > 0) return { safe: false, reason: 'friendly inside throwable effect clearance', friendliesAtRisk, targetClass };
 
-    const liveContact = this.confirmedVisualIds(state).length > 0;
+    const liveContact = this.v17ConfirmedVisualIds(state).length > 0;
     if (liveContact && grenade.kind !== 'smoke' && distance(grenade.to, state.player) > 2.25) {
       return { safe: false, reason: 'live target is confirmed elsewhere; offensive throwable target is stale', friendliesAtRisk, targetClass };
     }
@@ -686,7 +687,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
   }
 
   private throwableTargetClass(target: GridPoint, state: TacticalWizardSimulationStateV16): string {
-    if (this.confirmedVisualIds(state).length > 0 && near(target, state.player, 2.25)) return 'confirmed_visual';
+    if (this.v17ConfirmedVisualIds(state).length > 0 && near(target, state.player, 2.25)) return 'confirmed_visual';
     if (state.contactTrack.frontier.some((point) => near(target, point, 1.5))) return 'search_frontier';
     if (state.contactTrack.lastConfirmedPosition !== null && near(target, state.contactTrack.lastConfirmedPosition, 1.5)) {
       if (state.contactTrack.lkpCleared) return 'cleared_lkp';
@@ -714,7 +715,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
     const highPriority = state.recovery.phase !== 'none'
       || state.threatResponse.active
       || state.squad.tactic === 'sweep'
-      || this.confirmedVisualIds(state).length > 0
+      || this.v17ConfirmedVisualIds(state).length > 0
       || this.woundedPlan !== null;
     if (!highPriority) return false;
     this.logisticsSuspendedUntilTick = Math.max(this.logisticsSuspendedUntilTick, state.logicalTick + LOGISTICS_RESUME_DELAY_TICKS);
@@ -742,11 +743,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV16 {
   }
 
   private currentThreatPoint(state: TacticalWizardSimulationStateV16): GridPoint | null {
-    if (this.confirmedVisualIds(state).length > 0) return { ...state.player };
+    if (this.v17ConfirmedVisualIds(state).length > 0) return { ...state.player };
     return clonePoint(state.threatResponse.estimatedSector ?? this.threat.sector ?? state.squad.sharedLastKnownPosition);
   }
 
-  private confirmedVisualIds(state: TacticalWizardSimulationStateV16): readonly string[] {
+  private v17ConfirmedVisualIds(state: TacticalWizardSimulationStateV16): readonly string[] {
     const alive = new Set(state.agents.filter((agent) => agent.alive).map((agent) => agent.id));
     const host = this.v17Host();
     return host.members.filter((member) => alive.has(member.id) && host.canSeePlayer(member)).map((member) => member.id);
