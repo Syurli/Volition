@@ -325,9 +325,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
       const plan = internals.rescuePlan;
       const geometry = this.dynamicRecoveryGeometry;
       if (plan !== null && geometry !== null && member.id === plan.rescuerId && plan.phase === 'establish_cover') {
-        const state = this.v18BaseState();
-        const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
-        if (rescuer !== undefined && rescuer.alive && distance(rescuer.position, geometry.stagePoint) > RECOVERY_STAGE_ARRIVAL) {
+        if (distance(member.position, geometry.stagePoint) > RECOVERY_STAGE_ARRIVAL) {
           return { handled: true, target: { ...geometry.stagePoint } };
         }
         return { handled: true, target: null };
@@ -340,7 +338,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
       const plan = internals.rescuePlan;
       const geometry = this.dynamicRecoveryGeometry;
       if (plan !== null && geometry !== null && plan.phase === 'establish_cover' && plan.rescuerId === agentId) {
-        const rescuer = this.v18BaseState().agents.find((agent) => agent.id === agentId);
+        const rescuer = this.v18Host().members.find((member) => member.id === agentId);
         if (rescuer !== undefined && distance(rescuer.position, geometry.stagePoint) > RECOVERY_STAGE_ARRIVAL) return 'rescue_move';
       }
       return originalRecoveryTaskFor(agentId);
@@ -409,11 +407,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     };
   }
 
-  private maintainDynamicRecovery(
-    state: TacticalWizardSimulationStateV17,
-    force: boolean,
-    forcedReason: RecoveryReplanReason = 'manual_refresh',
-  ): void {
+  private maintainDynamicRecovery(state: TacticalWizardSimulationStateV17, force: boolean, forcedReason: RecoveryReplanReason = 'manual_refresh'): void {
     const internals = this.v18Recovery();
     const plan = internals.rescuePlan;
     if (plan === null || plan.covererId === null) {
@@ -432,9 +426,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
 
     const threat = this.resolveRecoveryThreat(state);
     const planIdentity = `${plan.downedAgentId}:${plan.rescuerId}:${plan.covererId}:${plan.startedTick}`;
-    const reason = force
-      ? forcedReason
-      : this.replanReason(state, planIdentity, casualty.position, rescuer.position, coverer.position, threat);
+    const reason = force ? forcedReason : this.replanReason(state, planIdentity, casualty.position, rescuer.position, coverer.position, threat);
     if (reason === null) {
       this.applyDynamicRecoveryToHost(state);
       return;
@@ -533,10 +525,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
       coverer.task = 'suppress';
       coverer.role = 'suppressor';
       if (geometry.threatAnchor !== null) {
-        coverer.facing = normalize({
-          x: geometry.threatAnchor.x - coverer.position.x,
-          y: geometry.threatAnchor.y - coverer.position.y,
-        });
+        coverer.facing = normalize({ x: geometry.threatAnchor.x - coverer.position.x, y: geometry.threatAnchor.y - coverer.position.y });
       }
     }
   }
@@ -554,9 +543,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     if (contactTrack?.lastConfirmedPosition !== null && contactTrack?.lastConfirmedPosition !== undefined && !contactTrack.lkpCleared) {
       return { point: { ...contactTrack.lastConfirmedPosition }, source: 'contact_memory' };
     }
-    if (state.squad.sharedLastKnownPosition !== null) {
-      return { point: { ...state.squad.sharedLastKnownPosition }, source: 'contact_memory' };
-    }
+    if (state.squad.sharedLastKnownPosition !== null) return { point: { ...state.squad.sharedLastKnownPosition }, source: 'contact_memory' };
     return { point: null, source: 'none' };
   }
 
@@ -591,10 +578,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
 
     const origin = before.player;
     const direction = after.playerCombat.facing;
-    const extendedEnd = clampWorld({
-      x: origin.x + direction.x * V18_PLAYER_WEAPON_RANGE,
-      y: origin.y + direction.y * V18_PLAYER_WEAPON_RANGE,
-    });
+    const extendedEnd = clampWorld({ x: origin.x + direction.x * V18_PLAYER_WEAPON_RANGE, y: origin.y + direction.y * V18_PLAYER_WEAPON_RANGE });
     const candidates = after.agents
       .filter((agent) => agent.alive)
       .map((agent) => ({ agent, projection: dot({ x: agent.position.x - origin.x, y: agent.position.y - origin.y }, direction), miss: perpendicularDistance(agent.position, origin, direction) }))
@@ -613,21 +597,14 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     if (!hit.agent.targetVisible) this.injectIncomingFireForTest(hit.agent.id, origin);
     this.injectThreatEvidenceForTest(hit.agent.id, 'hit', 0.98, bearing);
     this.v18Host().log('player', 'player', 'Player', 'fire', `V18 extended-range rifle hit ${hit.agent.label}.`, {
-      from: { ...origin },
-      to: { ...hit.agent.position },
-      hitAgentId: hit.agent.id,
-      damage: V18_PLAYER_DAMAGE,
-      weaponRange: V18_PLAYER_WEAPON_RANGE,
-      rangeBand: 'extended_22_to_26',
+      from: { ...origin }, to: { ...hit.agent.position }, hitAgentId: hit.agent.id, damage: V18_PLAYER_DAMAGE, weaponRange: V18_PLAYER_WEAPON_RANGE, rangeBand: 'extended_22_to_26',
     });
   }
 
   private maintainExtendedRangeFire(state: TacticalWizardSimulationStateV17): void {
     const host = this.v18Host();
-    const confirmed = host.members.filter((member) => host.canSeePlayer(member));
-    if (confirmed.length === 0) return;
+    if (!host.members.some((member) => host.canSeePlayer(member))) return;
     const recovery = this.v18Recovery().rescuePlan;
-
     for (const member of host.members) {
       const agent = state.agents.find((entry) => entry.id === member.id);
       if (agent === undefined || !agent.alive || agent.ammoRounds < 3) continue;
@@ -653,36 +630,22 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
     this.v18Threat().clearThreatResponse();
     this.staleThreatClears += 1;
     host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'tactic', 'Stale threat-response ownership expired after the evidence horizon elapsed.', {
-      lastEvidenceTick: lastEvidence,
-      currentTick: state.logicalTick,
-      staleAfterTicks: STALE_THREAT_TICKS,
+      lastEvidenceTick: lastEvidence, currentTick: state.logicalTick, staleAfterTicks: STALE_THREAT_TICKS,
     });
   }
 
   private synchronizeOperationalAlert(state: TacticalWizardSimulationStateV17): void {
-    const host = this.v18Host();
-    if (state.threatResponse.active && host.alertState === 'idle') host.alertState = 'active';
+    if (state.threatResponse.active && this.v18Host().alertState === 'idle') this.v18Host().alertState = 'active';
   }
 
   private v18BaseState(): TacticalWizardSimulationStateV17 {
     return super.getState();
   }
 
-  private v18Host(): HostAccess {
-    return this as unknown as HostAccess;
-  }
-
-  private v18Recovery(): RecoveryInternals {
-    return this as unknown as RecoveryInternals;
-  }
-
-  private v18Threat(): ThreatInternals {
-    return this as unknown as ThreatInternals;
-  }
-
-  private v18Combat(): V9CombatInternals {
-    return this as unknown as V9CombatInternals;
-  }
+  private v18Host(): HostAccess { return this as unknown as HostAccess; }
+  private v18Recovery(): RecoveryInternals { return this as unknown as RecoveryInternals; }
+  private v18Threat(): ThreatInternals { return this as unknown as ThreatInternals; }
+  private v18Combat(): V9CombatInternals { return this as unknown as V9CombatInternals; }
 }
 
 export function shouldForceTravelFacing(input: {
@@ -757,8 +720,7 @@ function selectSecurityPoint(coverer: GridPoint, casualty: GridPoint, threat: Gr
       const cover = blockedNeighbourCount(point);
       const desiredPenalty = Math.abs(casualtyDistance - RECOVERY_SECURITY_DESIRED_DISTANCE);
       const movementCost = Math.max(0, path.length - 1);
-      const score = cover * 20 - desiredPenalty * 4 - movementCost * 0.75;
-      candidates.push({ point, score });
+      candidates.push({ point, score: cover * 20 - desiredPenalty * 4 - movementCost * 0.75 });
     }
   }
   if (candidates.length === 0 && threat !== null) return selectSecurityPoint(coverer, casualty, null, occupied);
@@ -812,24 +774,8 @@ function clampWorld(point: GridPoint): GridPoint {
   };
 }
 
-function clonePoint(point: GridPoint | null): GridPoint | null {
-  return point === null ? null : { ...point };
-}
-
-function normalize(point: GridPoint): GridPoint {
-  const length = Math.hypot(point.x, point.y);
-  return length <= 1e-9 ? { x: 1, y: 0 } : { x: point.x / length, y: point.y / length };
-}
-
-function angleDegrees(a: GridPoint, b: GridPoint): number {
-  const value = Math.max(-1, Math.min(1, dot(a, b)));
-  return Math.acos(value) * (180 / Math.PI);
-}
-
-function dot(a: GridPoint, b: GridPoint): number {
-  return a.x * b.x + a.y * b.y;
-}
-
-function distance(a: GridPoint, b: GridPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
+function clonePoint(point: GridPoint | null): GridPoint | null { return point === null ? null : { ...point }; }
+function normalize(point: GridPoint): GridPoint { const length = Math.hypot(point.x, point.y); return length <= 1e-9 ? { x: 1, y: 0 } : { x: point.x / length, y: point.y / length }; }
+function angleDegrees(a: GridPoint, b: GridPoint): number { return Math.acos(Math.max(-1, Math.min(1, dot(a, b)))) * (180 / Math.PI); }
+function dot(a: GridPoint, b: GridPoint): number { return a.x * b.x + a.y * b.y; }
+function distance(a: GridPoint, b: GridPoint): number { return Math.hypot(a.x - b.x, a.y - b.y); }
