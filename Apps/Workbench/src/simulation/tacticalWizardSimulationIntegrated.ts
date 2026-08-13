@@ -1,4 +1,4 @@
-import { hasLineOfSight, isWalkable, type GridPoint } from './navigation';
+import { hasLineOfSight, type GridPoint } from './navigation';
 import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from './tacticalWizardTestMapV7';
 import {
   TacticalWizardSimulation as TacticalWizardSimulationV18,
@@ -135,7 +135,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     this.installCohesionHysteresis();
     this.installMovementCommitments();
     this.installLocomotionHysteresis();
-    this.host().log('system', 'simulation', 'Volition Simulation', 'session', 'Integrated combat-stability layer enabled.', {
+    this.integratedHost().log('system', 'simulation', 'Volition Simulation', 'session', 'Integrated combat-stability layer enabled.', {
       tacticsAdded: 0,
       acousticPolicy: 'stable_per_listener_estimate_within_gunshot_episode',
       movementPolicy: 'single_short_lived_execution_commitment_for_non_urgent_travel',
@@ -164,7 +164,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
   }
 
   override advance(deltaSeconds: number): TacticalWizardSimulationStateV18 {
-    const host = this.host();
+    const host = this.integratedHost();
     const beforeFrame = host.motionFrame;
     const beforeFacing = new Map(host.members.map((member) => [member.id, { ...member.facing }]));
     super.advance(deltaSeconds);
@@ -181,7 +181,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
   }
 
   private installStableAcousticEvidence(): void {
-    const host = this.host();
+    const host = this.integratedHost();
     const originalBuildStimuli = host.buildStimuli.bind(this);
     host.buildStimuli = (member: HostMember, visible: boolean): readonly unknown[] => {
       const stimuli = originalBuildStimuli(member, visible);
@@ -200,7 +200,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
   }
 
   private installCohesionHysteresis(): void {
-    const internals = this.cohesion();
+    const internals = this.cohesionInternals();
     const originalMaintain = internals.maintainWoundedSupport.bind(this);
     internals.maintainWoundedSupport = (state: TacticalWizardSimulationStateV18): void => {
       const plan = internals.woundedPlan;
@@ -233,7 +233,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
   }
 
   private installMovementCommitments(): void {
-    const host = this.host();
+    const host = this.integratedHost();
     const originalMovementTarget = host.movementTarget.bind(this);
     host.movementTarget = (member: HostMember): GridPoint | null => {
       const proposed = originalMovementTarget(member);
@@ -264,7 +264,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
   }
 
   private installLocomotionHysteresis(): void {
-    const host = this.host();
+    const host = this.integratedHost();
     const originalResolve = host.resolveLocomotionMode.bind(this);
     host.resolveLocomotionMode = (member: HostMember, movementDirection: GridPoint): string => {
       const proposed = originalResolve(member, movementDirection);
@@ -314,8 +314,8 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     if (candidate.miss <= EXTENDED_NEAR_MISS_WEAK) {
       const weight = candidate.miss <= EXTENDED_NEAR_MISS_STRONG ? 0.52 : 0.34;
       this.injectThreatEvidenceForTest(candidate.agent.id, 'near_miss', weight, bearing);
-      if (candidate.miss <= EXTENDED_DODGE_RADIUS) this.reactions().triggerDodge(candidate.agent.id, 'player_near_miss_extended');
-      this.host().log('agent', candidate.agent.id, candidate.agent.label, 'perception', 'Extended rifle trace produced near-miss evidence using the same semantics as the base weapon trace.', {
+      if (candidate.miss <= EXTENDED_DODGE_RADIUS) this.reactionInternals().triggerDodge(candidate.agent.id, 'player_near_miss_extended');
+      this.integratedHost().log('agent', candidate.agent.id, candidate.agent.label, 'perception', 'Extended rifle trace produced near-miss evidence using the same semantics as the base weapon trace.', {
         rangeBand: '22_to_26',
         missDistance: Number(candidate.miss.toFixed(3)),
         evidence: 'near_miss',
@@ -324,7 +324,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
     }
 
     this.injectThreatEvidenceForTest(candidate.agent.id, 'bullet_impact', 0.2, bearing);
-    this.host().log('agent', candidate.agent.id, candidate.agent.label, 'perception', 'Extended rifle trace produced bullet-impact evidence using the same semantics as the base weapon trace.', {
+    this.integratedHost().log('agent', candidate.agent.id, candidate.agent.label, 'perception', 'Extended rifle trace produced bullet-impact evidence using the same semantics as the base weapon trace.', {
       rangeBand: '22_to_26',
       impactDistance: Number(candidate.impactDistance.toFixed(3)),
       evidence: 'bullet_impact',
@@ -336,26 +336,26 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
       this.movementCommitments.delete(member.id);
       return null;
     }
-    const committed = { task: member.task, target: { ...target }, untilFrame: this.host().motionFrame + MOVEMENT_COMMIT_FRAMES };
+    const committed = { task: member.task, target: { ...target }, untilFrame: this.integratedHost().motionFrame + MOVEMENT_COMMIT_FRAMES };
     this.movementCommitments.set(member.id, committed);
     member.tacticalTarget = { ...target };
     return { ...target };
   }
 
   private hasUrgentMovementOwner(agentId: string): boolean {
-    const host = this.host();
-    const reaction = this.reactions().reactions.get(agentId);
+    const host = this.integratedHost();
+    const reaction = this.reactionInternals().reactions.get(agentId);
     if (reaction !== undefined && reaction.kind !== 'none' && reaction.untilTick > host.logicalTick) return true;
-    const recovery = this.recovery().rescuePlan;
+    const recovery = this.recoveryInternals().rescuePlan;
     if (recovery !== null && (recovery.downedAgentId === agentId || recovery.rescuerId === agentId || recovery.covererId === agentId)) return true;
-    return this.threat().threatPhase === 'break_contact';
+    return this.threatInternals().threatPhase === 'break_contact';
   }
 
-  private host(): HostAccess { return this as unknown as HostAccess; }
-  private cohesion(): CohesionInternals { return this as unknown as CohesionInternals; }
-  private recovery(): RecoveryInternals { return this as unknown as RecoveryInternals; }
-  private threat(): ThreatInternals { return this as unknown as ThreatInternals; }
-  private reactions(): ReactionInternals { return this as unknown as ReactionInternals; }
+  private integratedHost(): HostAccess { return this as unknown as HostAccess; }
+  private cohesionInternals(): CohesionInternals { return this as unknown as CohesionInternals; }
+  private recoveryInternals(): RecoveryInternals { return this as unknown as RecoveryInternals; }
+  private threatInternals(): ThreatInternals { return this as unknown as ThreatInternals; }
+  private reactionInternals(): ReactionInternals { return this as unknown as ReactionInternals; }
 }
 
 export function shouldRetainWoundedSupport(input: WoundedSupportRetentionInput): WoundedSupportRetentionDecision {
@@ -422,7 +422,3 @@ function normalize(point: GridPoint): GridPoint {
 
 function dot(a: GridPoint, b: GridPoint): number { return a.x * b.x + a.y * b.y; }
 function distance(a: GridPoint, b: GridPoint): number { return Math.hypot(a.x - b.x, a.y - b.y); }
-
-// Keep this import materially used so the integration file fails closed if the
-// reference map/navigation contract changes under it.
-void isWalkable;
