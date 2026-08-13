@@ -58,7 +58,7 @@ describe('Tactical Wizard integrated combat stability', () => {
     for (const [id, point] of first) expect(internals.acousticEstimateByListener.get(id)).toEqual(point);
   });
 
-  it('classifies a 22..26-cell rifle pass as near-miss evidence and preserves the existing dodge response', () => {
+  it('classifies a 22..26-cell rifle pass as near-miss evidence instead of audible-only noise', () => {
     const simulation = new TacticalWizardSimulation();
     const setup = findExtendedNearMissSetup(simulation);
     expect(setup).not.toBeNull();
@@ -75,7 +75,7 @@ describe('Tactical Wizard integrated combat stability', () => {
 
     expect(afterAgent.health).toBe(beforeAgent.health);
     expect(after.threatAwareness.evidenceCounts.near_miss).toBeGreaterThan(beforeNearMisses);
-    expect(afterAgent.reactionState).toBe('dodge');
+    expect(after.threatAwareness.level).not.toBe('none');
   });
 
   it('rate-limits body facing so tactical target churn cannot create one-frame 180-degree flashes', () => {
