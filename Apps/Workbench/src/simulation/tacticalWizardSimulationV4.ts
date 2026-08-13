@@ -1,12 +1,12 @@
-export * from './tacticalWizardSimulationV18';
+export * from './tacticalWizardSimulationIntegrated';
 
 import {
-  TacticalWizardSimulation as TacticalWizardSimulationV18,
+  TacticalWizardSimulation as TacticalWizardSimulationIntegrated,
   type TacticalWizardSimulationState,
-} from './tacticalWizardSimulationV18';
+} from './tacticalWizardSimulationIntegrated';
 
 /** Compatibility entry used by the current Workbench shell. */
-export class TacticalWizardSimulation extends TacticalWizardSimulationV18 {
+export class TacticalWizardSimulation extends TacticalWizardSimulationIntegrated {
   override step(): TacticalWizardSimulationState {
     return this.advance(this.stepSeconds);
   }
