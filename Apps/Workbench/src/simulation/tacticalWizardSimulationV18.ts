@@ -186,9 +186,6 @@ const EXTENDED_FIRE_INTERVAL_TICKS = 4;
  * noise stimuli, and extends the player/AI test weapon envelope.
  */
 export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
-  override readonly hearingRadius = V18_HEARING_RADIUS;
-  override readonly visionRange = V18_VISION_RANGE;
-
   private dynamicRecoveryGeometry: DynamicRecoveryGeometry | null = null;
   private recoveryRevisionCounter = 0;
   private lastDynamicRecoveryPlanIdentity: string | null = null;
@@ -205,6 +202,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationV17 {
 
   constructor() {
     super();
+    // V7's public readonly fields are inferred as literal types (10/12). Keep
+    // the historical baseline untouched and retune only this reference Host
+    // instance at runtime so V7-V17 regression expectations remain stable.
+    Object.defineProperty(this, 'hearingRadius', { value: V18_HEARING_RADIUS, writable: false, configurable: true });
+    Object.defineProperty(this, 'visionRange', { value: V18_VISION_RANGE, writable: false, configurable: true });
     this.installDynamicRecoveryHooks();
     this.installMovementReorientationHook();
     this.installAcousticStimulusHook();
