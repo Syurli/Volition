@@ -14,9 +14,9 @@ import { searchResupplyMayDetach } from '../../Apps/Workbench/src/simulation/tac
 describe('Tactical Wizard perception / investigation integration', () => {
   it('turns rifle-shot hearing into a bounded movement investigation instead of cognition-only investigate', () => {
     const simulation = new TacticalWizardSimulation();
-    expect(simulation.setPlayerPosition({ x: 2, y: 9 })).toBe(true);
+    expect(simulation.setPlayerPosition({ x: 10, y: 19 })).toBe(true);
 
-    simulation.playerFireAt({ x: 12, y: 9 });
+    simulation.playerFireAt({ x: 20, y: 19 });
     simulation.advance(0.25);
 
     let state = simulation.getState();
@@ -31,7 +31,7 @@ describe('Tactical Wizard perception / investigation integration', () => {
     expect(proposal).not.toBeNull();
     expect(distance(proposal!, state.perceptionIntegration.acousticInvestigationTarget!)).toBeLessThanOrEqual(8.5);
 
-    simulation.playerFireAt({ x: 12, y: 9 });
+    simulation.playerFireAt({ x: 20, y: 19 });
     simulation.advance(0.25);
     state = simulation.getState();
     expect(state.perceptionIntegration.acousticShots).toBeGreaterThanOrEqual(2);
