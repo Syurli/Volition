@@ -82,6 +82,10 @@ export class TacticalWizardRuntime {
     return (this.legacyHost as unknown as { readonly stepSeconds: number }).stepSeconds;
   }
 
+  get agentMoveSpeed(): number {
+    return (this.legacyHost as unknown as { readonly agentMoveSpeed: number }).agentMoveSpeed;
+  }
+
   getState(): TacticalWizardRuntimeState {
     const base = this.legacyHost.getState();
     return {
