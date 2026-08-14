@@ -1,23 +1,16 @@
 import type { MouseEvent } from 'react';
 import type { Locale } from '../i18n';
 import { localizedAssetName, localizedTactic } from '../assetLocalization';
-import { tacticalWizardTestMap, type GrenadeVisual, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardRuntime';
+import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardRuntime';
+import type { GrenadeVisual } from '../simulation/tacticalWizardTacticalHost';
 import type { GridPoint } from '../simulation/navigation';
 
 const CELL = 22;
 interface Props { readonly state: TacticalWizardSimulationState; readonly overlays: SimulationOverlaySettings; readonly onSetPlayer: (point: GridPoint) => void; readonly locale: Locale; }
 
 export function SimulationCanvas({ state, overlays, onSetPlayer, locale }: Props) {
-  const width = tacticalWizardTestMap.width * CELL;
-  const height = tacticalWizardTestMap.height * CELL;
-  const player = center(state.player);
-  const handleClick = (event: MouseEvent<SVGSVGElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.floor((event.clientX - rect.left) / rect.width * tacticalWizardTestMap.width);
-    const y = Math.floor((event.clientY - rect.top) / rect.height * tacticalWizardTestMap.height);
-    onSetPlayer({ x, y });
-  };
-
+  const width = tacticalWizardTestMap.width * CELL; const height = tacticalWizardTestMap.height * CELL; const player = center(state.player);
+  const handleClick = (event: MouseEvent<SVGSVGElement>) => { const rect = event.currentTarget.getBoundingClientRect(); const x = Math.floor((event.clientX - rect.left) / rect.width * tacticalWizardTestMap.width); const y = Math.floor((event.clientY - rect.top) / rect.height * tacticalWizardTestMap.height); onSetPlayer({ x, y }); };
   return <svg className="simulation-canvas tactical-observer" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Tactical Wizard squad AI tactical observer" onClick={handleClick}>
     <rect className="sim-floor" width={width} height={height} />
     {tacticalWizardTestMap.zones.map((zone) => <g className={`sim-zone zone-${zone.kind}`} key={`zone-${zone.id}`} pointerEvents="none"><rect x={zone.x * CELL + 2} y={zone.y * CELL + 2} width={zone.width * CELL - 4} height={zone.height * CELL - 4} rx={7} /><text x={zone.x * CELL + 8} y={zone.y * CELL + 14}>{locale === 'zh-CN' ? zone.nameZh : zone.name}</text></g>)}

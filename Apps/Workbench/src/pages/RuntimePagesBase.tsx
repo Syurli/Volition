@@ -3,7 +3,8 @@ import type { ConnectionState, LiveTelemetryState } from '../connection';
 import type { Locale, MessageKey, Translate } from '../i18n';
 import { localizedAssetName, localizedIntent, localizedRole, localizedTactic } from '../assetLocalization';
 import type { GridPoint } from '../simulation/navigation';
-import type { BuddyRole, LocomotionMode, SimulationOverlaySettings, SpecialAction, TacticalOpportunityPurpose, TacticalTask, TacticalWizardSimulationState } from '../simulation/tacticalWizardRuntime';
+import type { SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardRuntime';
+import type { BuddyRole, LocomotionMode, SpecialAction, TacticalOpportunityPurpose, TacticalTask } from '../simulation/tacticalWizardTacticalHost';
 import { SimulationCanvas } from '../components/SimulationCombatCanvas';
 import { Candidates, EmptyState, Inspector, Metric, MetricLine } from '../components/Inspectors';
 
