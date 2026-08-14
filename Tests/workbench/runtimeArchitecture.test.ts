@@ -1,36 +1,56 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const simulationDir = resolve(process.cwd(), 'Apps/Workbench/src/simulation');
+const retiredOverlays = [
+  'tacticalWizardSimulationV8.ts',
+  'tacticalWizardSimulationV9.ts',
+  'tacticalWizardSimulationV10.ts',
+  'tacticalWizardSimulationV11.ts',
+  'tacticalWizardSimulationV12.ts',
+  'tacticalWizardSimulationV14.ts',
+  'tacticalWizardSimulationV15.ts',
+  'tacticalWizardSimulationV16.ts',
+  'tacticalWizardSimulationV17.ts',
+  'tacticalWizardSimulationV18.ts',
+  'tacticalWizardSimulationIntegrated.ts',
+  'tacticalWizardSimulationExecutionIntegrated.ts',
+  'tacticalWizardSimulationPerceptionIntegrated.ts',
+  'tacticalWizardSimulationThreatAuthority.ts',
+  'tacticalWizardSimulationCurrent.ts',
+  'tacticalWizardExecutionOwnership.ts',
+];
 
-describe('Tactical Wizard runtime architecture guardrails', () => {
-  it('keeps version history out of the production runtime inheritance surface', () => {
+describe('Tactical Wizard fixed hierarchy architecture guardrails', () => {
+  it('routes production through one composition runtime and never through the retired overlay chain', () => {
     const production = readFileSync(resolve(simulationDir, 'tacticalWizardRuntime.ts'), 'utf8');
-    const compatibilityEntry = readFileSync(resolve(simulationDir, 'tacticalWizardSimulationV4.ts'), 'utf8');
+    const entry = readFileSync(resolve(simulationDir, 'tacticalWizardSimulationV4.ts'), 'utf8');
 
     expect(production).toContain('class TacticalWizardRuntime');
     expect(production).not.toMatch(/class\s+TacticalWizardRuntime\s+extends\s+/);
-    expect(compatibilityEntry).not.toMatch(/class\s+TacticalWizardSimulation\s+extends\s+/);
-    expect(compatibilityEntry).toContain("TacticalWizardRuntime as TacticalWizardSimulation");
+    expect(production).toContain("from './tacticalWizardHierarchy'");
+    expect(production).toContain("from './tacticalWizardSimulationV7'");
+    expect(production).not.toMatch(/tacticalWizardSimulation(?:Current|Integrated|ExecutionIntegrated|PerceptionIntegrated|ThreatAuthority|V(?:8|9|1[0-8]))/);
+    expect(entry).toContain('TacticalWizardRuntime as TacticalWizardSimulation');
+    expect(entry).not.toMatch(/tacticalWizardSimulationCurrent|tacticalWizardExecutionOwnership/);
   });
 
-  it('does not allow a new numbered simulation generation to become the next patch layer', () => {
-    const numbered = readdirSync(simulationDir)
-      .map((name) => /^tacticalWizardSimulationV(\d+)\.ts$/.exec(name))
-      .filter((match): match is RegExpExecArray => match !== null)
-      .map((match) => Number(match[1]));
-
-    expect(numbered.some((version) => version >= 19)).toBe(false);
+  it('physically removes retired overlay-style behavior layers from the simulation tree', () => {
+    for (const file of retiredOverlays) expect(existsSync(resolve(simulationDir, file)), file).toBe(false);
   });
 
-  it('keeps the final movement authority in the domain-named resolver', () => {
+  it('keeps one explicit responsibility order and one execution contract for movement and weapon authorization', () => {
     const production = readFileSync(resolve(simulationDir, 'tacticalWizardRuntime.ts'), 'utf8');
-    const ownership = readFileSync(resolve(simulationDir, 'tacticalWizardExecutionOwnership.ts'), 'utf8');
+    const hierarchy = readFileSync(resolve(simulationDir, 'tacticalWizardHierarchy.ts'), 'utf8');
 
-    expect(production).toContain('resolveExecutionOwnership');
-    expect(production).toContain('resolveExecutionTarget');
-    expect(ownership).toContain("owner: 'direct_combat'");
-    expect(ownership).toContain('grenade_suppress: 20');
+    expect(production).toContain("['perception', 'contact', 'tactical_planning', 'operational_arbitration', 'execution', 'host']");
+    expect(production).toContain("finalMovementAuthority: 'execution_contract'");
+    expect(production).toContain("finalWeaponAuthority: 'execution_contract'");
+    expect(hierarchy).toContain('resolveExecutionContract');
+    expect(hierarchy).toContain('grenade_suppress: 20');
+    expect(hierarchy).toContain("planOwner: PlanOwner");
+    expect(hierarchy).toContain("movementOwner: MovementOwner");
+    expect(hierarchy).toContain("weaponOwner: WeaponOwner");
   });
 });
