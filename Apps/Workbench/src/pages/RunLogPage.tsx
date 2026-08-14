@@ -23,9 +23,10 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
   const exportLog = () => {
     const compressed = compressRunLog(simulation.runLog);
     const payload = {
-      format: 'volition.run-log.v5',
+      format: 'volition.run-log.v6',
       generatedAt: new Date().toISOString(),
       project: 'tactical-wizard-reference',
+      runtimeArchitecture: 'fixed_tactical_hierarchy',
       logCompression: {
         ...compressed.stats,
         policy: 'causal-events-lossless_motion-keyframes_state-spans',
@@ -43,10 +44,13 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
         command: simulation.command,
         leadership: simulation.leadership,
         recovery: simulation.recovery,
+        recoverySafety: simulation.recoverySafety,
+        dynamicRecovery: simulation.dynamicRecovery,
         cohesion: simulation.cohesion,
         threatResponse: simulation.threatResponse,
         threatAwareness: simulation.threatAwareness,
         contactTrack: simulation.contactTrack,
+        executionAuthority: simulation.executionAuthority,
         combatAuthority: simulation.combatAuthority,
         logisticsLifecycle: simulation.logisticsLifecycle,
         supplies: simulation.supplies,
@@ -88,8 +92,6 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
       },
       entries: compressed.entries,
     };
-    // Compact JSON avoids spending most of the file on indentation while all
-    // semantic keys remain self-describing and directly searchable.
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -101,9 +103,9 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
 
   const reductionPercent = Math.round(compressionPreview.stats.reductionRatio * 100);
   return <section className="page-stack run-log-page">
-    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('V17 运行时仍保留完整诊断缓冲；导出时把 30Hz 位移合并为决策 Tick 关键帧，把未变化的 decision/search 合并为持续区间，同时完整保留射击、来火证据、战术切换、感知、救援、投掷物安全与协同事件。这样显著缩小文件，但不会丢失复盘 AI 因果链所需的信息。', 'V17 keeps the full runtime diagnostic buffer. Export collapses 30 Hz motion into decision-tick keyframes and unchanged decision/search polling into spans while preserving fire, threat evidence, tactic, perception, recovery, throwable-safety and cohesion events for causal analysis.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
+    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('固定战术层级运行时保留完整诊断缓冲；导出同时记录每名代理的 Plan / Movement / Weapon 执行合同，并把 30Hz 位移合并为决策 Tick 关键帧。后续复盘以 executionAuthority 为最终执行真相，不再从旧版本 Authority 反推。', 'The fixed tactical hierarchy keeps the full diagnostic buffer and exports each agent\'s Plan / Movement / Weapon execution contract. Motion is compressed into decision-tick keyframes; executionAuthority is the canonical execution truth.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
     <div className="metric-grid"><LogMetric label={L('运行时记录', 'Runtime entries')} value={simulation.runLog.length} /><LogMetric label={L('预计导出', 'Export entries')} value={compressionPreview.stats.exportedEntries} /><LogMetric label={L('条目压缩', 'Entry reduction')} value={`${reductionPercent}%`} /><LogMetric label={L('小队记录', 'Squad events')} value={squadEvents} /></div>
-    <section className="surface run-log-filter"><label>{L('类型', 'Category')}<select value={category} onChange={(event) => setCategory(event.target.value as 'all' | RunLogCategory)}><option value="all">{L('全部', 'All')}</option><option value="player">{L('玩家', 'Player')}</option><option value="squad">{L('小队代理', 'Squad')}</option><option value="agent">{L('士兵代理', 'Agent')}</option><option value="system">{L('系统', 'System')}</option></select></label><label>{L('搜索', 'Search')}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={L('代理、事件、战术、来袭方向、威胁扇区、救援、友军安全…', 'agent, event, tactic, bearing, threat sector, rescue, friendly safety…')} /></label><span>{filtered.length} / {simulation.runLog.length} · {L('决策', 'decisions')} {agentDecisions} · {L('玩家', 'player')} {playerActions}</span></section>
+    <section className="surface run-log-filter"><label>{L('类型', 'Category')}<select value={category} onChange={(event) => setCategory(event.target.value as 'all' | RunLogCategory)}><option value="all">{L('全部', 'All')}</option><option value="player">{L('玩家', 'Player')}</option><option value="squad">{L('小队代理', 'Squad')}</option><option value="agent">{L('士兵代理', 'Agent')}</option><option value="system">{L('系统', 'System')}</option></select></label><label>{L('搜索', 'Search')}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={L('代理、事件、战术、补给合同、执行所有权、救援…', 'agent, event, tactic, logistics lease, execution owner, recovery…')} /></label><span>{filtered.length} / {simulation.runLog.length} · {L('决策', 'decisions')} {agentDecisions} · {L('玩家', 'player')} {playerActions}</span></section>
     <section className="surface run-log-surface"><div className="run-log-table-head"><span>Tick</span><span>{L('主体', 'Actor')}</span><span>{L('事件', 'Event')}</span><span>{L('摘要', 'Summary')}</span><span>{L('数据', 'Data')}</span></div><div className="run-log-table-body">{filtered.slice().reverse().map((entry) => <LogRow key={entry.sequence} entry={entry} locale={locale} />)}</div></section>
   </section>;
 }
@@ -126,19 +128,12 @@ function LogRow({ entry, locale }: { readonly entry: RunLogEntry; readonly local
 
 function localizeSummary(entry: RunLogEntry, locale: Locale): string {
   if (locale !== 'zh-CN') return entry.summary;
-  if (entry.summary.includes('threat awareness')) return '未命中射击 / 弹着 / 近失弹正在累积来火威胁置信度；没有把隐藏玩家真实坐标写入 AI 认知。';
-  if (entry.summary.includes('Accumulated miss/impact evidence')) return '多次未命中来火证据已足够明确，小队进入粗略方向反伏击响应。';
-  if (entry.summary.includes('Wounded mutual-support contract committed')) return '成员进入重伤/落单状态；一名队友靠近形成互助，第三人保留安全/火力职责。';
-  if (entry.summary.includes('throwable was cancelled')) return '投掷物在最终效果区检查中被取消并退还：友军风险、陈旧目标或错误投掷点。';
-  if (entry.summary.includes('Logistics lifecycle')) return '补给任务生命周期发生变化；战斗/搜索期间暂停而不是逐帧反复创建与取消。';
-  if (entry.summary.includes('coarse threat sector')) return '小队受到未确认来源攻击：根据来袭方向建立粗略威胁扇区，隐藏射手真实坐标未进入认知。';
-  if (entry.summary.includes('Counter-ambush transitioned')) return '小队完成脱离枪线，转入前出 / 掩护 / 卡位的推测扇区搜索。';
-  if (entry.summary.includes('Rescue interrupted')) return '救援受到战斗伤害打断；救治进度清零并重新建立第三人掩护。';
-  if (entry.summary.includes('Dedicated rescue-security')) return '已为第三名成员分配独立救援掩护位；救治者需等待该安全位建立。';
-  if (entry.summary.includes('defensive smoke')) return `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}针对未确认来袭方向投放应急烟幕。`;
+  if (entry.summary.includes('Fixed tactical hierarchy')) return '固定战术层级运行时已启用：感知 → 接触记忆 → 战术规划 → 运行仲裁 → 执行合同 → Host。';
+  if (entry.summary.includes('field resupply')) return '代理获得正式补给执行租约；补给完成前战术规划不再夺回其身体控制权。';
+  if (entry.summary.includes('Recovery contract committed')) return '救援合同已原子提交；救援者与安全位由固定层级统一执行。';
   if (entry.event === 'decision') return `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}：${localizedRole(String(entry.data.role ?? ''), locale)}，选择 ${localizedIntent(String(entry.data.intent ?? ''), locale)}；小队战术 ${localizedTactic(String(entry.data.tactic ?? ''), locale)}；弹药 ${String(entry.data.ammoRounds ?? '?')}（${String(entry.data.burstsRemaining ?? '?')} 个 burst）。`;
   if (entry.event === 'tactic') return `小队战术切换：${localizedTactic(String(entry.data.from ?? ''), locale)} → ${localizedTactic(String(entry.data.to ?? ''), locale)}。`;
-  if (entry.event === 'roles') return entry.summary.includes('Fire-support') ? '小队完成火力基点交接，避免无效或失去态势的成员继续固定占位。' : `小队为 ${localizedTactic(String(entry.data.tactic ?? ''), locale)} 重新分配成员职责。`;
+  if (entry.event === 'roles') return entry.summary.includes('Fire-support') ? '战术规划将火力基点交给仍具备射击能力的成员。' : `小队为 ${localizedTactic(String(entry.data.tactic ?? ''), locale)} 重新分配成员职责。`;
   if (entry.event === 'player_move') return '玩家发生位移。';
   if (entry.event === 'player_noise') return '玩家制造了测试噪声。';
   if (entry.event === 'fire') return entry.data.reason === 'out_of_ammo' ? `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}因弹药耗尽无法射击。` : `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}执行射击。`;
