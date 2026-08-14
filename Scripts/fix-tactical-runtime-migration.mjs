@@ -25,10 +25,9 @@ simulationTest = simulationTest.replace(
 simulationTest = simulationTest.replaceAll('new TacticalWizardSimulation()', 'new TacticalWizardHost()');
 simulationTest = simulationTest.replaceAll('interactive Workbench example V3', 'semantic Tactical Host example');
 simulationTest = simulationTest.replace('expect(moved.movementResolution).toBe(0.25)', 'expect(moved.movementResolution).toBe(0.2)');
+simulationTest = simulationTest.replace('expect(moved.player.y).toBe(before.y - 0.25)', 'expect(moved.player.y).toBe(before.y - 0.2)');
 write('Tests/workbench/simulation.test.ts', simulationTest);
 
-// Any remaining V3 reference after the intentional Host test rewrite is type-only
-// historical coupling. Route it to the semantic Host type surface.
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -44,15 +43,10 @@ for (const base of [resolve(root, 'Apps/Workbench/src'), resolve(root, 'Tests/wo
   }
 }
 
-// The production guard must refer to the retired historical filename without the
-// global legacy-reference rewrite turning it into the new semantic HostTypes file.
 let architectureTest = read('Tests/workbench/runtimeArchitecture.test.ts');
 architectureTest = architectureTest.replace("  'tacticalWizardHostTypes.ts',\n  'tacticalWizardSimulationV4.ts',", "  'tacticalWizardSimulation' + 'V3.ts',\n  'tacticalWizardSimulationV4.ts',");
 write('Tests/workbench/runtimeArchitecture.test.ts', architectureTest);
 
-// Recovery safety is a temporal behavior. Track the peak pressure/action during
-// sustained fire instead of inspecting only the final frame, which may already
-// be a post-abort cooldown or a newly restarted recovery contract.
 let recoveryTest = read('Tests/workbench/activeAttentionRecovery.test.ts');
 recoveryTest = recoveryTest.replace(`    for (let burst = 0; burst < 8; burst += 1) {
       simulation.playerFireAt(casualty.position);
