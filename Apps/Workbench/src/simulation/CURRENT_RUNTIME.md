@@ -1,90 +1,115 @@
-# Tactical Wizard Current Runtime
+# Tactical Wizard production runtime
 
-The Workbench has one production simulation runtime: `tacticalWizardRuntime.ts`.
+The Tactical Wizard reference now uses one fixed responsibility hierarchy. Runtime versions are a Git/history concern; numbered simulation overlays are forbidden in production.
 
-`tacticalWizardSimulationV4.ts` is a compatibility import surface only. `tacticalWizardSimulationCurrent.ts` and the historical `tacticalWizardSimulationV*.ts` inheritance stack are now contained behind the production runtime as a compatibility Host while proven mechanics are migrated into domain-named modules. The Workbench itself must not inherit the historical stack.
+## Production hierarchy
 
-The important distinction is:
+```text
+Perception
+  ↓ facts only
+Contact / Knowledge
+  ↓ memory and confirmed/lost contact state
+Tactical Planning
+  ↓ Role / Task / TacticalTarget
+Operational Arbitration
+  ↓ chooses the active plan lease
+Execution Contract
+  ↓ Movement / Weapon / Throwable authorization
+Host
+  ↓ navigation, locomotion, facing, firing and world simulation
+```
 
-- **version history belongs to Git and compatibility fixtures**;
-- **runtime layers are named by responsibility**;
-- **one responsibility has one final writer**.
+`TacticalWizardRuntime` is the Workbench production entry. It is composition-based and does not extend another simulation generation.
 
-## Production layers
+## Ownership rules
 
-The intended production flow is:
+### Perception
 
-1. **Perception / Evidence** — produces facts only; it does not write movement, roles, or tactical targets.
-2. **Contact / Knowledge** — owns contact memory and confidence; it does not choose tactics.
-3. **Tactical Planning** — owns squad tactic, role, task, and tactical target.
-4. **Operational Arbitration** — resolves which domain currently owns an agent: recovery, counterfire, reaction, direct combat, search, logistics, or patrol.
-5. **Execution Resolver** — is the single final writer of movement/action targets.
-6. **Host / Locomotion** — executes navigation, motion, facing, weapon/world simulation; it does not re-decide tactics.
+Perception may report visibility, hearing and incoming-fire evidence. It cannot assign roles, change logistics tasks or write a movement target.
 
-The first physical migration completed here is **Execution Ownership**:
+### Contact / Knowledge
 
-- `tacticalWizardExecutionOwnership.ts` contains the canonical owner priorities and target resolution policy;
-- `tacticalWizardRuntime.ts` is a composition boundary rather than another inherited simulation version;
-- Workbench production movement goes through one final `Execution Resolver`;
-- historical movement hooks may still calculate compatibility proposals, but their proposal is consulted only when the winning owner explicitly needs the legacy Host implementation;
-- committed tactical/search targets do not accept an unrelated legacy logistics/reaction destination as fallback;
-- `grenade_suppress` keeps its original reaction priority 20 and is not promoted to the old generic reaction priority 80;
-- recovery rescue/security remain higher-priority hard owners.
+Contact state stores confirmed positions, lost-contact state and uncertainty. It cannot directly move an agent.
 
-This directly prevents the observed Crossfire/Flank target oscillation where a member alternated between its tactical point and a supply cache while still labelled as a tactical mover.
+### Tactical Planning
 
-## Rules
+Tactical Planning is the only owner of normal combat `Role`, `Task` and `TacticalTarget`. Existing doctrine remains bounding, sweep, flank, crossfire, assault and regroup; this architecture change does not add a new tactic.
 
-1. Do not add `V19`, `V20`, or another version-number behavior layer.
-2. New production behavior enters a domain-named module composed by `tacticalWizardRuntime.ts`.
-3. The production `TacticalWizardRuntime` must not extend `Current`, `Integrated`, `ThreatAuthority`, or any `Vxx` class.
-4. One domain has one final authority. Recovery safety, perception/threat association, tactical opportunity selection, and execution ownership must not be independently re-decided by multiple historical layers.
-5. Historical Vxx tests stay green while behavior is migrated. Their purpose is regression protection, not version selection.
-6. The Workbench production state must expose both `recoverySafety.runtimeVersion === 'current'` and `executionAuthority.finalMovementAuthority === 'execution_resolver'`.
-7. Historical compatibility hooks are transitional implementation detail. A domain is considered migrated only when its final production decision is made outside the version chain.
-8. Do not tune tactic trigger conditions while migrating an authority domain. Architecture repair and gameplay tuning are separate changes.
+A role is only operationally useful when its capability requirements are valid. In particular, a dry element cannot count as a usable firing lane or suppressor merely because its geometry is correct.
 
-## Canonical movement arbitration
+### Operational Arbitration
 
-Current production movement priorities are responsibility based:
+Operational Arbitration decides which existing domain owns the current plan lease:
 
-- downed reaction: 100
-- recovery rescue: 95
-- recovery security: 90
-- counterfire: 85
-- stunned reaction: 80
-- direct combat: 70
-- smoke retreat / search: 60
-- dodge: 50
-- smoke reposition: 40
-- flash push / logistics boundary: 30
-- grenade suppress: 20
-- patrol: 10
+- recovery,
+- committed logistics,
+- tactical/search,
+- patrol.
 
-Equal-priority cases keep deterministic declaration order. Reaction subtype priorities come from the original reactive-combat semantics rather than the later generic `reaction = 80` wrapper.
+Reactions are temporary execution constraints. They do not delete another domain's committed plan.
 
-## Current recovery ownership
+### Execution Contract
 
-Recovery remains reconciled by the Current compatibility Host while its domain migration is protected by existing regression tests:
+Every agent exposes one contract with:
 
-- rescue role selection prefers a combat-capable security element when the medical-role constraints allow it;
-- stage/treatment/security geometry is committed atomically at rescue start;
-- friendly-blocked security lanes invalidate the actual current security point and temporarily exclude that failed geometry;
-- security readiness distinguishes position, LOS, friendly fire lane, weapon readiness, and hard reaction readiness;
-- sustained near-miss/fire pressure can pause or abort recovery when effective security cannot be provided;
-- a downed casualty blocking a lane remains a non-replan case;
-- soft dodge/smoke reactions do not regain authority over an otherwise valid committed recovery;
-- pending recoverable casualties gate lower-priority field logistics so rescue start does not churn assign/preempt cycles.
+- `planOwner`,
+- `movementOwner`,
+- `weaponOwner`,
+- `movementTarget`,
+- weapon/throwable authorization,
+- tactical lease state,
+- reason.
 
-## Migration order
+This contract is the final source of truth for movement and weapon authorization.
 
-The remaining physical flattening order is responsibility based, not version based:
+## Logistics contract
 
-1. tactical role/plan ownership;
-2. reaction/action authorization;
-3. logistics admission and detachment;
-4. perception/contact/threat facts;
-5. recovery domain extraction;
-6. remove the compatibility Host inheritance chain once equivalent domain tests cover the proven mechanics.
+A low-ammunition signal is not itself permission to abandon a tactical role. Once logistics admission is approved, however, the handoff is atomic:
 
-No new tactic or gameplay feature is part of this migration. The goal is to preserve the behavior that already worked while removing competing final writers.
+1. Logistics receives the plan lease.
+2. The agent moves to one selected supply cache.
+3. Tactical fire/throw authorization is disabled for that agent while detached.
+4. Soft reactions cannot cancel the assignment.
+5. After resupply, the lease returns to Tactical Planning and the tactical plan is refreshed.
+
+If all living members are dry, exactly one deterministic member may receive the emergency resupply lease. This prevents the previous all-dry deadlock without adding a new retreat behavior.
+
+## Recovery contract
+
+Recovery uses the same arbitration/contract surface. Rescuer and security ownership is committed atomically; hard incapacitation may temporarily constrain execution, but lower-priority domains cannot steal the recovery plan.
+
+## Tactical Host
+
+The current tactical/locomotion kernel is the standalone implementation historically named `tacticalWizardSimulationV7.ts`. It is retained because it is not an overlay class and contains the previously validated coordinated-position, search, fire-lane and locomotion mechanics.
+
+It is treated only as the Host beneath the fixed hierarchy. Production code does not import V8–V18 or any former Integrated / Authority / Current layer. A later naming-only migration may rename this Host without changing behavior.
+
+## Retired overlay chain
+
+The following production pattern is forbidden and has been removed:
+
+```text
+V8 extends V7
+V9 extends V8
+...
+Integrated extends V18
+ExecutionIntegrated extends Integrated
+PerceptionIntegrated extends ExecutionIntegrated
+ThreatAuthority extends PerceptionIntegrated
+Current extends ThreatAuthority
+```
+
+No replacement V19/V20 layer may be introduced.
+
+## Regression requirements
+
+Changes to this runtime must preserve these invariants:
+
+- an approved logistics lease owns the agent's movement until completion or explicit invalidation;
+- `grenade_suppress` remains a low-priority reaction and cannot erase logistics;
+- hard reactions may constrain movement without rewriting the plan owner;
+- all-dry squads select exactly one recovery/resupply owner;
+- dry agents cannot provide a valid suppressive/crossfire lane;
+- recovery ownership remains above lower-priority domains;
+- Workbench production imports no retired overlay source;
+- run-log exports include `executionAuthority` so post-hoc analysis sees the final execution truth directly.
