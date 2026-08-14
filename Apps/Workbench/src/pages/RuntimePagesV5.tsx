@@ -2,6 +2,8 @@ import type { DecisionTrace } from '@volition/core';
 import type { Locale, Translate } from '../i18n';
 import type { GridPoint } from '../simulation/navigation';
 import type { SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
+import type { TacticalWizardTestLoadout } from '../simulation/tacticalWizardTestLoadout';
+import { TestLoadoutPanel } from '../components/TestLoadoutPanel';
 import { DebugPage as BaseDebugPage, SimulationPage as BaseSimulationPage } from './RuntimePagesV4';
 
 interface SimulationProps {
@@ -19,12 +21,16 @@ interface SimulationProps {
   readonly onNoise: () => void;
   readonly onMove: (dx: number, dy: number) => void;
   readonly onSetPlayer: (point: GridPoint) => void;
+  readonly testLoadout: TacticalWizardTestLoadout;
+  readonly onApplyTestLoadout: (loadout: TacticalWizardTestLoadout) => void;
 }
 
 export function SimulationPage(props: SimulationProps) {
+  const { testLoadout, onApplyTestLoadout, ...runtimeProps } = props;
   return <div className="simulation-v11-page">
+    <TestLoadoutPanel locale={props.locale} value={testLoadout} onApply={onApplyTestLoadout} />
     <ThreatResponsePanel simulation={props.simulation} locale={props.locale} />
-    <BaseSimulationPage {...props} />
+    <BaseSimulationPage {...runtimeProps} />
   </div>;
 }
 
