@@ -1,0 +1,40 @@
+name: Tactical Runtime Semantic Migration
+
+on:
+  push:
+    branches:
+      - agent/deversion-active-attention-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-and-validate:
+    if: ${{ !contains(github.event.head_commit.message, '[semantic-runtime-migrated]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply semantic runtime migration
+        run: node Scripts/migrate-tactical-runtime.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build Workbench
+        run: npm -w @volition/workbench run build
+      - name: Commit validated migration
+        run: |
+          git config user.name "Volition Runtime Migration"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "De-version runtime and harden active recovery [semantic-runtime-migrated]"
+          git push origin HEAD:${GITHUB_REF_NAME}
