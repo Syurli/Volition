@@ -9,12 +9,20 @@ import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './
 import { RunLogPage } from './pages/RunLogPage';
 import type { GridPoint } from './simulation/navigation';
 import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV4';
+import {
+  DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT,
+  applyTacticalWizardTestLoadout,
+  normalizeTacticalWizardTestLoadout,
+  type TacticalWizardTestLoadout,
+} from './simulation/tacticalWizardTestLoadout';
 import { EMPTY_LIVE_TELEMETRY, WorkbenchWebSocketConnection, reduceLiveTelemetry, type ConnectionState, type LiveTelemetryState, validateLiveEndpoint } from './connection';
 
 type PageId = 'projects' | 'overview' | 'design' | 'simulation' | 'debug' | 'log' | 'visualization' | 'connection';
 const connection = new WorkbenchWebSocketConnection();
 const PLAYBACK_HZ = 30;
 const PLAYBACK_FRAME_SECONDS = 1 / PLAYBACK_HZ;
+const TEST_LOADOUT_STORAGE_KEY = 'volition.workbench.tacticalWizardTestLoadout';
+const initialTestLoadout = loadTestLoadout();
 
 export function App() {
   const [locale, setLocale] = useState<Locale>(() => loadLocale());
@@ -23,7 +31,8 @@ export function App() {
   const [localProjects, setLocalProjects] = useState<readonly WorkbenchProject[]>(() => loadLocalProjects());
   const [project, setProject] = useState<WorkbenchProject>(tacticalWizardExampleProject);
   const [config, setConfig] = useState<VolitionProjectConfig>(() => structuredClone(tacticalWizardExampleProject.config));
-  const simulationRef = useRef(new TacticalWizardSimulation());
+  const [testLoadout, setTestLoadout] = useState<TacticalWizardTestLoadout>(() => initialTestLoadout);
+  const simulationRef = useRef(createConfiguredSimulation(initialTestLoadout));
   const [simulation, setSimulation] = useState<TacticalWizardSimulationState>(() => simulationRef.current.getState());
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -38,7 +47,23 @@ export function App() {
 
   const collectTraces = (next: TacticalWizardSimulationState) => { for (const trace of next.latestTraces) setTraceHistory((history) => appendTrace(history, trace)); };
   const step = () => { const next = simulationRef.current.step(); setSimulation(next); collectTraces(next); };
-  const reset = () => { setPlaying(false); setTraceHistory([]); setSimulation(simulationRef.current.reset()); };
+  const reset = () => {
+    setPlaying(false);
+    setTraceHistory([]);
+    simulationRef.current.reset();
+    applyTacticalWizardTestLoadout(simulationRef.current, testLoadout);
+    setSimulation(simulationRef.current.getState());
+  };
+  const applyTestLoadout = (next: TacticalWizardTestLoadout) => {
+    const normalized = normalizeTacticalWizardTestLoadout(next);
+    setPlaying(false);
+    setTraceHistory([]);
+    setTestLoadout(normalized);
+    saveTestLoadout(normalized);
+    simulationRef.current.reset();
+    applyTacticalWizardTestLoadout(simulationRef.current, normalized);
+    setSimulation(simulationRef.current.getState());
+  };
 
   useEffect(() => {
     if (!playing) return;
@@ -120,7 +145,7 @@ export function App() {
     {page === 'projects' && <ProjectHub t={t} locale={locale} localProjects={localProjects} onSelect={selectProject} onCreate={storeProject} onImport={storeProject} />}
     {page === 'overview' && <OverviewPage t={t} locale={locale} project={project} simulation={simulation} onOpenSimulation={() => setPage('simulation')} />}
     {page === 'design' && <DesignPage t={t} locale={locale} config={config} setConfig={setConfig} project={project} onSave={saveCurrent} onReset={() => setConfig(structuredClone(project.config))} />}
-    {page === 'simulation' && <SimulationPage t={t} locale={locale} simulation={simulation} overlays={overlays} setOverlays={setOverlays} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onStep={step} onReset={reset} onNoise={() => { simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }} onMove={(dx,dy) => { simulationRef.current.nudgePlayer(dx,dy); setSimulation(simulationRef.current.getState()); }} onSetPlayer={(point) => { simulationRef.current.setPlayerPosition(point); setSimulation(simulationRef.current.getState()); }} />}
+    {page === 'simulation' && <SimulationPage t={t} locale={locale} simulation={simulation} overlays={overlays} setOverlays={setOverlays} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onStep={step} onReset={reset} onNoise={() => { simulationRef.current.emitNoise(); setSimulation(simulationRef.current.getState()); }} onMove={(dx,dy) => { simulationRef.current.nudgePlayer(dx,dy); setSimulation(simulationRef.current.getState()); }} onSetPlayer={(point) => { simulationRef.current.setPlayerPosition(point); setSimulation(simulationRef.current.getState()); }} testLoadout={testLoadout} onApplyTestLoadout={applyTestLoadout} />}
     {page === 'debug' && <DebugPage t={t} locale={locale} simulation={simulation} traces={traceHistory} />}
     {page === 'log' && <RunLogPage locale={locale} simulation={simulation} />}
     {page === 'visualization' && <VisualizationPage t={t} traces={traceHistory} />}
@@ -133,3 +158,6 @@ function appendTrace(history: readonly DecisionTrace[], trace: DecisionTrace): r
 function loadLocale(): Locale { if (typeof window !== 'undefined') { const saved = window.localStorage.getItem('volition.workbench.locale'); if (saved === 'zh-CN' || saved === 'en-US') return saved; } return detectLocale(); }
 function normalizeDirectionKey(key: string): string | null { const normalized = key.toLowerCase(); if (normalized === 'w' || key === 'ArrowUp') return 'up'; if (normalized === 's' || key === 'ArrowDown') return 'down'; if (normalized === 'a' || key === 'ArrowLeft') return 'left'; if (normalized === 'd' || key === 'ArrowRight') return 'right'; return null; }
 function directionDelta(direction: string): readonly [number, number] { switch (direction) { case 'up': return [0,-1]; case 'down': return [0,1]; case 'left': return [-1,0]; case 'right': return [1,0]; default: return [0,0]; } }
+function createConfiguredSimulation(loadout: TacticalWizardTestLoadout): TacticalWizardSimulation { const simulation = new TacticalWizardSimulation(); applyTacticalWizardTestLoadout(simulation, loadout); return simulation; }
+function loadTestLoadout(): TacticalWizardTestLoadout { if (typeof window === 'undefined') return DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT; try { const raw = window.localStorage.getItem(TEST_LOADOUT_STORAGE_KEY); return raw === null ? DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT : normalizeTacticalWizardTestLoadout(JSON.parse(raw) as Partial<TacticalWizardTestLoadout>); } catch { return DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT; } }
+function saveTestLoadout(loadout: TacticalWizardTestLoadout): void { if (typeof window !== 'undefined') window.localStorage.setItem(TEST_LOADOUT_STORAGE_KEY, JSON.stringify(loadout)); }
