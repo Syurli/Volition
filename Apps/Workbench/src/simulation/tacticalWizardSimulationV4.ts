@@ -1,12 +1,12 @@
-export * from './tacticalWizardSimulationThreatAuthority';
+export * from './tacticalWizardSimulationCurrent';
 
 import {
-  TacticalWizardSimulation as TacticalWizardSimulationIntegrated,
+  TacticalWizardSimulation as TacticalWizardSimulationCurrent,
   type TacticalWizardSimulationState,
-} from './tacticalWizardSimulationThreatAuthority';
+} from './tacticalWizardSimulationCurrent';
 
-/** Compatibility entry used by the current Workbench shell. */
-export class TacticalWizardSimulation extends TacticalWizardSimulationIntegrated {
+/** Compatibility entry used by the Workbench shell. Production authority terminates in the current runtime. */
+export class TacticalWizardSimulation extends TacticalWizardSimulationCurrent {
   override step(): TacticalWizardSimulationState {
     return this.advance(this.stepSeconds);
   }
