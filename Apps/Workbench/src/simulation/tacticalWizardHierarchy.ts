@@ -4,7 +4,7 @@ export type LogisticsTask = 'none' | 'resupply_ammo' | 'resupply_grenades' | 're
 export type ReactionState = 'none' | 'grenade_suppress' | 'flash_push' | 'smoke_reposition' | 'dodge' | 'smoke_retreat' | 'stunned' | 'downed';
 export type RecoveryRole = 'none' | 'rescuer' | 'security';
 export type PlanOwner = 'tactical' | 'logistics' | 'recovery' | 'patrol';
-export type MovementOwner = 'tactical' | 'logistics' | 'reaction' | 'recovery_rescue' | 'recovery_security' | 'patrol';
+export type MovementOwner = 'tactical' | 'investigation' | 'logistics' | 'reaction' | 'recovery_rescue' | 'recovery_security' | 'patrol';
 export type WeaponOwner = 'tactical' | 'recovery_security' | 'none';
 
 export interface CapabilitySnapshot {
@@ -105,6 +105,8 @@ export function capabilitySnapshot(alive: boolean, ammoRounds: number, grenadeCo
  * Tactical planning owns Role / Task / TacticalTarget. Logistics and recovery
  * may acquire a committed plan lease, while reactions are only temporary motion
  * constraints. A reaction never deletes another domain's commitment.
+ * Bounded investigation is a perception/contact movement constraint represented
+ * in the final execution contract; it does not become a second tactical planner.
  */
 export function resolveExecutionContract(input: ExecutionHierarchyInput): ExecutionContract {
   if (!input.capability.alive || input.reaction?.kind === 'downed') {

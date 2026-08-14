@@ -535,7 +535,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
   private observeContactKnowledge(state: RuntimeState): void {
     if (state.logicalTick === this.lastContactSampleTick) return;
     this.lastContactSampleTick = state.logicalTick;
-    const visibleIds = state.agents.filter((agent) => agent.alive && agent.targetVisible).map((agent) => agent.id);
+    const visibleIds = this.confirmedHostVisualIds(state);
     const visible = visibleIds.length > 0;
 
     if (visible) {
@@ -601,7 +601,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
 
   private evaluateNegativeEvidence(state: RuntimeState): void {
     if (this.lastConfirmedContact === null || this.lkpCleared || state.squad.tactic !== 'sweep') return;
-    if (state.agents.some((agent) => agent.alive && agent.targetVisible)) return;
+    if (this.confirmedHostVisualIds(state).length > 0) return;
     if (state.logicalTick === this.lastVerificationTick) return;
     this.lastVerificationTick = state.logicalTick;
 
@@ -701,7 +701,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
   }
 
   private fireAllowed(member: ThreatHostMember, target: GridPoint, reason: string): boolean {
-    if (member.targetVisible) return true;
+    if (this.behaviorHost().canSeePlayer(member)) return true;
     if (this.currentFrontier().some((point) => distance(point, target) <= 1.1)) return false;
     if (this.lastConfirmedContact === null || distance(this.lastConfirmedContact, target) > 1.1) return true;
     if (this.lkpCleared) return false;
@@ -717,7 +717,8 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     if (living.length === 0) return false;
     const allDry = living.every((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) < 3);
     if (allDry) return false;
-    const confirmedVisual = living.some((agent) => agent.targetVisible);
+    const livingIds = new Set(living.map((agent) => agent.id));
+    const confirmedVisual = this.behaviorHost().members.some((member) => livingIds.has(member.id) && this.behaviorHost().canSeePlayer(member));
     if (confirmedVisual) return true;
     if (DIRECT_COMBAT_TACTICS.has(state.squad.tactic) && state.squad.lostContactTicks <= FAST_SEARCH_LOST_TICKS) return true;
     return false;
@@ -731,7 +732,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     if (agent === undefined || !agent.alive) return;
     const equipment = runtime.equipment.get(agent.id);
     const ammo = equipment?.ammoRounds ?? 0;
-    const directVisual = state.agents.some((entry) => entry.alive && entry.targetVisible);
+    const directVisual = this.confirmedHostVisualIds(state).length > 0;
     const ownsCriticalCombatRole = state.squad.suppressorId === agent.id || agent.targetVisible || ammo >= 3;
     if (!directVisual || !ownsCriticalCombatRole) return;
     runtime.finishLogistics(`lower-priority logistics lease preempted by direct combat during ${phase}`);
@@ -784,7 +785,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
   }
 
   private decorateBehaviorState(base: RuntimeState): TacticalWizardSimulationState {
-    const visibleIds = base.agents.filter((agent) => agent.alive && agent.targetVisible).map((agent) => agent.id);
+    const visibleIds = this.confirmedHostVisualIds(base);
     const lostTicks = this.lastConfirmedContactTick === null ? 0 : Math.max(0, base.logicalTick - this.lastConfirmedContactTick);
     const frontier = this.currentFrontier();
     const investigation = this.activeInvestigation(base.logicalTick);
@@ -907,6 +908,15 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     if (member.task === 'search_sector' || member.task === 'overwatch') return true;
     const investigation = this.activeInvestigation(this.behaviorHost().logicalTick);
     return investigation !== null && this.investigationResponders(investigation).includes(member.id);
+  }
+
+  private confirmedHostVisualIds(state: RuntimeState): string[] {
+    const alive = new Set(state.agents.filter((agent) => agent.alive).map((agent) => agent.id));
+    const host = this.behaviorHost();
+    return host.members
+      .filter((member) => alive.has(member.id) && host.canSeePlayer(member))
+      .map((member) => member.id)
+      .sort((left, right) => left.localeCompare(right, 'en'));
   }
 
   private currentFrontier(): readonly GridPoint[] {
