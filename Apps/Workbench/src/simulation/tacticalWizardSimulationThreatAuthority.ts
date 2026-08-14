@@ -180,6 +180,11 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     return this.getState();
   }
 
+  override advance(deltaSeconds: number): TacticalWizardSimulationState {
+    super.advance(deltaSeconds);
+    return this.getState();
+  }
+
   override getState(): TacticalWizardSimulationState {
     const base = super.getState();
     const runtime = this.authorityInternals();
@@ -322,7 +327,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
         return;
       }
 
-      if (attentionOwned && !this.recoveryOwnsMember(member.id)) {
+      if (attentionOwned && !this.authorityRecoveryOwnsMember(member.id)) {
         this.attentionFacing.set(member.id, sensorSuggestion);
         member.facing = this.resolveBodyFacing(member, bodyBefore);
         return;
@@ -485,7 +490,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     });
   }
 
-  private recoveryOwnsMember(id: string): boolean {
+  private authorityRecoveryOwnsMember(id: string): boolean {
     const plan = this.authorityInternals().rescuePlan;
     return plan !== null && (plan.rescuerId === id || plan.covererId === id);
   }
