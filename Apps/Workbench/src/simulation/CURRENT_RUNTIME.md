@@ -1,6 +1,6 @@
 # Tactical Wizard production runtime
 
-The Tactical Wizard reference now uses one fixed responsibility hierarchy. Runtime versions are a Git/history concern; numbered simulation overlays are forbidden in production.
+The Tactical Wizard reference uses one fixed responsibility hierarchy. Runtime revisions are Git/history concerns; numbered implementation modules are forbidden in the Workbench source tree.
 
 ## Production hierarchy
 
@@ -18,6 +18,14 @@ Execution Contract
 Host
   ↓ navigation, locomotion, facing, firing and world simulation
 ```
+
+The production modules are named by responsibility:
+
+- `tacticalWizardReferenceModel.ts` — reference model/types used by the baseline example and run-log contracts;
+- `tacticalWizardTacticalHost.ts` — tactical planning, coordinated positioning, navigation-facing locomotion and host execution mechanics;
+- `tacticalWizardTestMap.ts` — authored combat sandbox geometry and test points;
+- `tacticalWizardExecutionContract.ts` — capability, arbitration and final execution-contract rules;
+- `tacticalWizardRuntime.ts` — the Workbench production composition root.
 
 `TacticalWizardRuntime` is the Workbench production entry. It is composition-based and does not extend another simulation generation.
 
@@ -72,7 +80,7 @@ A low-ammunition signal is not itself permission to abandon a tactical role. Onc
 4. Soft reactions cannot cancel the assignment.
 5. After resupply, the lease returns to Tactical Planning and the tactical plan is refreshed.
 
-If all living members are dry, exactly one deterministic member may receive the emergency resupply lease. This prevents the previous all-dry deadlock without adding a new retreat behavior.
+If all living members are dry, exactly one deterministic member may receive the emergency resupply lease. This prevents the all-dry deadlock without adding a new retreat behavior.
 
 ## Recovery contract
 
@@ -80,26 +88,15 @@ Recovery uses the same arbitration/contract surface. Rescuer and security owners
 
 ## Tactical Host
 
-The current tactical/locomotion kernel is the standalone implementation historically named `tacticalWizardSimulationV7.ts`. It is retained because it is not an overlay class and contains the previously validated coordinated-position, search, fire-lane and locomotion mechanics.
+`tacticalWizardTacticalHost.ts` contains the validated coordinated-position, search, fire-lane, grenade-lifecycle and locomotion mechanics used beneath the fixed hierarchy. It is a responsibility module, not a runtime revision layer.
 
-It is treated only as the Host beneath the fixed hierarchy. Production code does not import V8–V18 or any former Integrated / Authority / Current layer. A later naming-only migration may rename this Host without changing behavior.
+The production Runtime composes this Host with `tacticalWizardExecutionContract.ts`; there is no compatibility simulation entry between the Workbench and the Runtime.
 
-## Retired overlay chain
+## Naming rule
 
-The following production pattern is forbidden and has been removed:
+Implementation names describe responsibility, never chronological generation. New source modules must not use suffixes such as `V2`, `V7` or similar revision numbers. Historical revision information belongs in Git commits/tags and, when necessary, archival documents—not in active module names.
 
-```text
-V8 extends V7
-V9 extends V8
-...
-Integrated extends V18
-ExecutionIntegrated extends Integrated
-PerceptionIntegrated extends ExecutionIntegrated
-ThreatAuthority extends PerceptionIntegrated
-Current extends ThreatAuthority
-```
-
-No replacement V19/V20 layer may be introduced.
+The same rule applies to active Workbench page and canvas modules. Presentation modules use responsibility names such as `SimulationTacticalCanvas`, `SimulationOperationsCanvas`, `SimulationRecoveryCanvas`, `SimulationCombatCanvas`, `RuntimePagesBase`, `RuntimeCombatPages` and `RuntimeResponsePages`.
 
 ## Regression requirements
 
@@ -111,5 +108,6 @@ Changes to this runtime must preserve these invariants:
 - all-dry squads select exactly one recovery/resupply owner;
 - dry agents cannot provide a valid suppressive/crossfire lane;
 - recovery ownership remains above lower-priority domains;
-- Workbench production imports no retired overlay source;
+- Workbench production imports only responsibility-named runtime modules;
+- active Workbench module filenames contain no chronological `Vxx` suffixes;
 - run-log exports include `executionAuthority` so post-hoc analysis sees the final execution truth directly.
