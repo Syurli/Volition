@@ -22,10 +22,7 @@ export interface TacticalWizardSimulationState extends TacticalWizardSimulationS
     readonly tacticalOpportunityTransitions: number;
     readonly actualFastSearchTransitions: number;
     readonly closePressureAgentId: string | null;
-    readonly attentionFacing: readonly {
-      readonly agentId: string;
-      readonly facing: GridPoint;
-    }[];
+    readonly attentionFacing: readonly { readonly agentId: string; readonly facing: GridPoint }[];
     readonly supportContracts: readonly {
       readonly supporterId: string;
       readonly supportedAgentIds: readonly string[];
@@ -44,18 +41,10 @@ interface HostMember {
   role: string;
   tacticalTarget: GridPoint | null;
   searchLookTarget: GridPoint | null;
-  coverState?: string;
 }
 
-interface ReactionAccess {
-  readonly kind: string;
-  readonly untilTick: number;
-}
-
-interface RescuePlanAccess {
-  readonly rescuerId: string;
-  readonly covererId: string | null;
-}
+interface ReactionAccess { readonly kind: string; readonly untilTick: number }
+interface RescuePlanAccess { readonly rescuerId: string; readonly covererId: string | null }
 
 interface AuthorityAcousticContract {
   episodeId: number;
@@ -73,17 +62,14 @@ interface AuthorityAcousticContract {
 interface AuthorityInternals {
   members: HostMember[];
   logicalTick: number;
-  motionFrame: number;
   player: GridPoint;
   alertState: 'idle' | 'pending' | 'active';
   tactic: string;
   tacticReason: string;
   tacticStartedTick: number;
   stableContactTicks: number;
-  stationaryTargetTicks: number;
   lostContactTicks: number;
   boundingPhase: number;
-  maneuverCycle: number;
   sharedLastKnownPosition: GridPoint | null;
   rescuePlan: RescuePlanAccess | null;
   reactions: Map<string, ReactionAccess>;
@@ -102,55 +88,39 @@ interface AuthorityInternals {
   safeFireLaneCount: () => number;
   planCompletion: () => number;
   log: (...args: any[]) => void;
-  pushEvent: (message: string) => void;
 }
 
 const SAME_CONTACT_ACOUSTIC_RADIUS = 8.5;
 const MANEUVER_CONTACT_GRACE_TICKS = 8;
 const TRACKING_HALF_FOV = 115;
 const ASSAULT_CLOSE_PRESSURE_RANGE = 3.4;
-const CLOSE_PRESSURE_STANDOFF = 1.05;
+const CLOSE_PRESSURE_STANDOFFS = [1.05, 1.2, 1.35] as const;
 const SEARCH_BIAS_SINGLE_SHOT_TICKS = 12;
 const SEARCH_BIAS_REPEATED_SHOT_TICKS = 20;
 
-/**
- * Central threat / tactical-opportunity authority for the Tactical Wizard case.
- *
- * This layer deliberately owns the cross-cutting questions that previously sat
- * between perception and execution wrappers:
- * - Is a rifle report new information, or merely evidence from the hostile we
- *   are already tracking?
- * - Is a short LOS flicker allowed to cancel an already committed flank,
- *   crossfire or assault?
- * - Does visual scanning steer the sensor, or physically spin the whole body?
- * - When is an established bound/crossfire good enough to exploit instead of
- *   waiting for a timeout-oriented doctrine transition?
- *
- * It adds no new squad tactic. It arbitrates evidence and protects/exploits the
- * existing bounding/flank/crossfire/assault/sweep/regroup vocabulary.
- */
+/** Central arbiter between perception evidence and tactical execution. */
 export class TacticalWizardSimulation extends TacticalWizardSimulationPerceptionIntegrated {
-  private readonly attentionFacing = new Map<string, GridPoint>();
-  private correlatedGunshots = 0;
-  private searchBiasGunshots = 0;
-  private secondaryGunshots = 0;
-  private suppressedSweepTransitions = 0;
-  private tacticalOpportunityTransitions = 0;
-  private actualFastSearchTransitions = 0;
-  private closePressureAgentId: string | null = null;
-  private lastCorrelatedShotTick = -999;
-  private lastSearchBiasShotTick = -999;
-  private lastSecondaryShotTick = -999;
-  private lastSuppressedSweepTick = -999;
-  private lastClosePressureLogTick = -999;
+  private readonly authorityAttentionFacing = new Map<string, GridPoint>();
+  private authorityCorrelatedGunshots = 0;
+  private authoritySearchBiasGunshots = 0;
+  private authoritySecondaryGunshots = 0;
+  private authoritySuppressedSweepTransitions = 0;
+  private authorityOpportunityTransitions = 0;
+  private authorityActualFastSearchTransitions = 0;
+  private authorityClosePressureAgentId: string | null = null;
+  private authorityLastCorrelatedShotTick = -999;
+  private authorityLastSearchBiasShotTick = -999;
+  private authorityLastSecondaryShotTick = -999;
+  private authorityLastSuppressedSweepTick = -999;
+  private authorityLastClosePressureLogTick = -999;
 
   constructor() {
     super();
-    this.installAcousticThreatAssociation();
-    this.installBodyAttentionSeparation();
-    this.installTacticalTransitionGuard();
-    this.installTacticalOpportunitySelection();
-    this.installAssaultClosePressure();
+    this.installAuthorityAcousticAssociation();
+    this.installAuthorityFacingSeparation();
+    this.installAuthorityTransitionGuard();
+    this.installAuthorityOpportunitySelection();
+    this.installAuthorityClosePressure();
     this.authorityInternals().log('system', 'simulation', 'Volition Simulation', 'session', 'Threat association / tactical-opportunity authority enabled.', {
       tacticsAdded: 0,
       evidencePriority: 'live_visual > squad_confirmed_contact > incoming_fire > acoustic > memory',
@@ -164,19 +134,19 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
 
   override reset(): TacticalWizardSimulationState {
     super.reset();
-    this.attentionFacing.clear();
-    this.correlatedGunshots = 0;
-    this.searchBiasGunshots = 0;
-    this.secondaryGunshots = 0;
-    this.suppressedSweepTransitions = 0;
-    this.tacticalOpportunityTransitions = 0;
-    this.actualFastSearchTransitions = 0;
-    this.closePressureAgentId = null;
-    this.lastCorrelatedShotTick = -999;
-    this.lastSearchBiasShotTick = -999;
-    this.lastSecondaryShotTick = -999;
-    this.lastSuppressedSweepTick = -999;
-    this.lastClosePressureLogTick = -999;
+    this.authorityAttentionFacing.clear();
+    this.authorityCorrelatedGunshots = 0;
+    this.authoritySearchBiasGunshots = 0;
+    this.authoritySecondaryGunshots = 0;
+    this.authoritySuppressedSweepTransitions = 0;
+    this.authorityOpportunityTransitions = 0;
+    this.authorityActualFastSearchTransitions = 0;
+    this.authorityClosePressureAgentId = null;
+    this.authorityLastCorrelatedShotTick = -999;
+    this.authorityLastSearchBiasShotTick = -999;
+    this.authorityLastSecondaryShotTick = -999;
+    this.authorityLastSuppressedSweepTick = -999;
+    this.authorityLastClosePressureLogTick = -999;
     return this.getState();
   }
 
@@ -190,40 +160,39 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     const runtime = this.authorityInternals();
     const contract = runtime.acousticInvestigation;
     const searchBias = contract?._authorityMode === 'search_bias';
-    const supportContracts = buildSupportContracts(base);
     return {
       ...base,
       perceptionIntegration: {
         ...base.perceptionIntegration,
         acousticInvestigationActive: base.perceptionIntegration.acousticInvestigationActive && !searchBias,
         responderIds: searchBias ? [] : base.perceptionIntegration.responderIds,
-        fastSearchTransitions: this.actualFastSearchTransitions,
+        fastSearchTransitions: this.authorityActualFastSearchTransitions,
       },
       threatAuthority: {
         bodyAttentionSeparated: true,
         acousticEvidenceMode: contract === null ? 'none' : searchBias ? 'search_bias' : 'investigation',
-        correlatedGunshots: this.correlatedGunshots,
-        searchBiasGunshots: this.searchBiasGunshots,
-        secondaryGunshots: this.secondaryGunshots,
-        suppressedSweepTransitions: this.suppressedSweepTransitions,
-        tacticalOpportunityTransitions: this.tacticalOpportunityTransitions,
-        actualFastSearchTransitions: this.actualFastSearchTransitions,
-        closePressureAgentId: this.closePressureAgentId,
+        correlatedGunshots: this.authorityCorrelatedGunshots,
+        searchBiasGunshots: this.authoritySearchBiasGunshots,
+        secondaryGunshots: this.authoritySecondaryGunshots,
+        suppressedSweepTransitions: this.authoritySuppressedSweepTransitions,
+        tacticalOpportunityTransitions: this.authorityOpportunityTransitions,
+        actualFastSearchTransitions: this.authorityActualFastSearchTransitions,
+        closePressureAgentId: this.authorityClosePressureAgentId,
         attentionFacing: base.agents.map((agent) => ({
           agentId: agent.id,
-          facing: { ...(this.attentionFacing.get(agent.id) ?? agent.facing) },
+          facing: { ...(this.authorityAttentionFacing.get(agent.id) ?? agent.facing) },
         })),
-        supportContracts,
+        supportContracts: buildSupportContracts(base),
       },
     };
   }
 
-  private installAcousticThreatAssociation(): void {
+  private installAuthorityAcousticAssociation(): void {
     const runtime = this.authorityInternals();
     const parentRegister = runtime.registerAcousticSample.bind(this);
     runtime.registerAcousticSample = (listenerId: string, perceivedPoint: GridPoint): void => {
       const coarse = coarsenAuthorityAcousticPoint(perceivedPoint);
-      const liveVisual = runtime.members.some((member) => this.memberAlive(member.id) && runtime.canSeePlayer(member));
+      const liveVisual = runtime.members.some((member) => this.isAuthorityMemberAlive(member.id) && runtime.canSeePlayer(member));
       const disposition = classifyAcousticEvidence({
         hasConfirmedVisual: liveVisual,
         alertActive: runtime.alertState === 'active',
@@ -234,42 +203,34 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
 
       if (disposition === 'same_contact') {
         runtime.acousticInvestigation = null;
-        if (shotTick !== this.lastCorrelatedShotTick) {
-          this.lastCorrelatedShotTick = shotTick;
-          this.correlatedGunshots += 1;
+        if (shotTick !== this.authorityLastCorrelatedShotTick) {
+          this.authorityLastCorrelatedShotTick = shotTick;
+          this.authorityCorrelatedGunshots += 1;
           runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'perception', 'Rifle report associated with the already confirmed hostile contact; no investigation movement or search scan was requested.', {
-            shotTick,
-            coarseTarget: { ...coarse },
-            policy: 'corroboration_not_new_threat',
+            shotTick, coarseTarget: { ...coarse }, policy: 'corroboration_not_new_threat',
           });
         }
         return;
       }
 
       if (disposition === 'search_bias') {
-        this.upsertSearchBiasContract(coarse, shotTick);
-        if (shotTick !== this.lastSearchBiasShotTick) {
-          this.lastSearchBiasShotTick = shotTick;
-          this.searchBiasGunshots += 1;
-          runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'perception', 'Rifle report matched the fresh lost-contact sector; it may bias the active search frontier but does not create investigation responders.', {
-            shotTick,
-            coarseTarget: { ...coarse },
-            lastKnown: runtime.sharedLastKnownPosition === null ? null : { ...runtime.sharedLastKnownPosition },
-            policy: 'same_contact_search_bias_only',
+        this.upsertAuthoritySearchBias(coarse, shotTick);
+        if (shotTick !== this.authorityLastSearchBiasShotTick) {
+          this.authorityLastSearchBiasShotTick = shotTick;
+          this.authoritySearchBiasGunshots += 1;
+          runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'perception', 'Rifle report matched the fresh lost-contact sector; it may bias search but does not create investigation responders.', {
+            shotTick, coarseTarget: { ...coarse }, policy: 'same_contact_search_bias_only',
           });
         }
         return;
       }
 
       if (disposition === 'secondary_cue') {
-        if (shotTick !== this.lastSecondaryShotTick) {
-          this.lastSecondaryShotTick = shotTick;
-          this.secondaryGunshots += 1;
-          runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'perception', 'Rifle report conflicts with the current contact sector; retained as a secondary cue without pre-empting the committed threat.', {
-            shotTick,
-            coarseTarget: { ...coarse },
-            lastKnown: runtime.sharedLastKnownPosition === null ? null : { ...runtime.sharedLastKnownPosition },
-            policy: 'single_contact_reference_does_not_switch_threat_on_acoustic_only',
+        if (shotTick !== this.authorityLastSecondaryShotTick) {
+          this.authorityLastSecondaryShotTick = shotTick;
+          this.authoritySecondaryGunshots += 1;
+          runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'perception', 'Rifle report conflicts with the committed contact sector; retained as a secondary cue without switching threat.', {
+            shotTick, coarseTarget: { ...coarse }, policy: 'single_contact_reference_no_acoustic_only_switch',
           });
         }
         return;
@@ -279,7 +240,7 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     };
   }
 
-  private upsertSearchBiasContract(target: GridPoint, shotTick: number): void {
+  private upsertAuthoritySearchBias(target: GridPoint, shotTick: number): void {
     const runtime = this.authorityInternals();
     const episodeId = runtime.acousticEpisodeId;
     const shots = Math.max(1, runtime.acousticShotsInEpisode);
@@ -287,16 +248,9 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     const current = runtime.acousticInvestigation;
     if (current === null || current.episodeId !== episodeId || current._authorityMode !== 'search_bias') {
       runtime.acousticInvestigation = {
-        episodeId,
-        target: { ...target },
-        firstShotTick: shotTick,
-        lastShotTick: shotTick,
-        shots,
-        expiresTick,
-        lastSampleTick: runtime.logicalTick,
-        listeners: new Set<string>(),
-        observationTargets: new Map<string, GridPoint>(),
-        _authorityMode: 'search_bias',
+        episodeId, target: { ...target }, firstShotTick: shotTick, lastShotTick: shotTick,
+        shots, expiresTick, lastSampleTick: runtime.logicalTick,
+        listeners: new Set<string>(), observationTargets: new Map<string, GridPoint>(), _authorityMode: 'search_bias',
       };
       return;
     }
@@ -312,46 +266,44 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     current.observationTargets.clear();
   }
 
-  private installBodyAttentionSeparation(): void {
+  private installAuthorityFacingSeparation(): void {
     const runtime = this.authorityInternals();
     const parentUpdate = runtime.updatePostureAndFacing.bind(this);
     runtime.updatePostureAndFacing = (member: HostMember): void => {
       const bodyBefore = { ...member.facing };
       parentUpdate(member);
       const sensorSuggestion = { ...member.facing };
-      const attentionOwned = this.activeAttentionOwnsMember(member.id);
+      const attentionOwned = this.authorityAttentionOwnsMember(member.id);
 
       if (member.targetVisible) {
-        this.attentionFacing.set(member.id, directionTo(member.position, runtime.player));
-        if (runtime.tactic === 'sweep' || attentionOwned) member.facing = this.resolveBodyFacing(member, bodyBefore);
+        this.authorityAttentionFacing.set(member.id, directionTo(member.position, runtime.player));
+        if (runtime.tactic === 'sweep' || attentionOwned) member.facing = this.resolveAuthorityBodyFacing(member, bodyBefore);
         return;
       }
-
-      if (attentionOwned && !this.authorityRecoveryOwnsMember(member.id)) {
-        this.attentionFacing.set(member.id, sensorSuggestion);
-        member.facing = this.resolveBodyFacing(member, bodyBefore);
+      if (attentionOwned && !this.isAuthorityRecoveryOwner(member.id)) {
+        this.authorityAttentionFacing.set(member.id, sensorSuggestion);
+        member.facing = this.resolveAuthorityBodyFacing(member, bodyBefore);
         return;
       }
-
-      this.attentionFacing.set(member.id, { ...member.facing });
+      this.authorityAttentionFacing.set(member.id, { ...member.facing });
     };
 
     const parentCanSee = runtime.canSeePlayer.bind(this);
     runtime.canSeePlayer = (member: HostMember): boolean => {
       if (parentCanSee(member)) return true;
-      if (!this.memberAlive(member.id)) return false;
+      if (!this.isAuthorityMemberAlive(member.id)) return false;
       const range = distance(member.position, runtime.player);
       if (range > runtime.visionRange) return false;
       if (!hasLineOfSight(tacticalWizardNavigationGrid, toCell(member.position), toCell(runtime.player))) return false;
-      const sensor = normalize(this.attentionFacing.get(member.id) ?? member.facing);
+      const sensor = normalize(this.authorityAttentionFacing.get(member.id) ?? member.facing);
       const targetDirection = directionTo(member.position, runtime.player);
       if (member.targetVisible) return angleDegrees(sensor, targetDirection) <= TRACKING_HALF_FOV;
       const halfFov = activeAttentionHalfFov(range);
-      return halfFov !== null && this.activeAttentionOwnsMember(member.id) && angleDegrees(sensor, targetDirection) <= halfFov;
+      return halfFov !== null && this.authorityAttentionOwnsMember(member.id) && angleDegrees(sensor, targetDirection) <= halfFov;
     };
   }
 
-  private resolveBodyFacing(member: HostMember, fallback: GridPoint): GridPoint {
+  private resolveAuthorityBodyFacing(member: HostMember, fallback: GridPoint): GridPoint {
     const runtime = this.authorityInternals();
     if (runtime.alertState === 'active' && runtime.sharedLastKnownPosition !== null && isFireSupportPosture(member)) {
       return directionTo(member.position, runtime.sharedLastKnownPosition);
@@ -359,56 +311,51 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     return normalize(fallback);
   }
 
-  private activeAttentionOwnsMember(id: string): boolean {
+  private authorityAttentionOwnsMember(id: string): boolean {
     const runtime = this.authorityInternals();
     const contract = runtime.acousticInvestigation;
-    const liveContract = contract !== null && runtime.logicalTick <= contract.expiresTick && contract._authorityMode !== 'search_bias' && contract.listeners.has(id);
-    if (liveContract) return true;
-    if (runtime.alertState !== 'active') return false;
-    return runtime.tactic === 'sweep' || runtime.lostContactTicks > 0;
+    if (contract !== null && runtime.logicalTick <= contract.expiresTick && contract._authorityMode !== 'search_bias' && contract.listeners.has(id)) return true;
+    return runtime.alertState === 'active' && (runtime.tactic === 'sweep' || runtime.lostContactTicks > 0);
   }
 
-  private installTacticalTransitionGuard(): void {
+  private installAuthorityTransitionGuard(): void {
     const runtime = this.authorityInternals();
     const parentTransition = runtime.transitionTactic.bind(this);
     runtime.transitionTactic = (next: string, reason: string, rotateRoles: boolean): void => {
       const current = runtime.tactic;
       if (next === 'sweep') {
-        const liveVisual = runtime.members.some((member) => this.memberAlive(member.id) && runtime.canSeePlayer(member));
+        const liveVisual = runtime.members.some((member) => this.isAuthorityMemberAlive(member.id) && runtime.canSeePlayer(member));
         if (shouldProtectCommittedManeuver(current, runtime.lostContactTicks, liveVisual)) {
           runtime.tacticReason = liveVisual
             ? 'A live hostile is still visually confirmed; search cannot pre-empt direct combat.'
             : `The ${current} maneuver remains committed through a short LOS interruption; preserve the fresh LKP before escalating to sweep.`;
-          if (runtime.logicalTick !== this.lastSuppressedSweepTick) {
-            this.lastSuppressedSweepTick = runtime.logicalTick;
-            this.suppressedSweepTransitions += 1;
-            runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'tactic', 'Sweep transition suppressed because a live visual or committed maneuver still owns execution.', {
-              currentTactic: current,
-              lostContactTicks: runtime.lostContactTicks,
-              liveVisual,
-              graceTicks: MANEUVER_CONTACT_GRACE_TICKS,
-              rejectedReason: reason,
+          if (runtime.logicalTick !== this.authorityLastSuppressedSweepTick) {
+            this.authorityLastSuppressedSweepTick = runtime.logicalTick;
+            this.authoritySuppressedSweepTransitions += 1;
+            runtime.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'tactic', 'Sweep transition suppressed because live visual or committed maneuver still owns execution.', {
+              currentTactic: current, lostContactTicks: runtime.lostContactTicks, liveVisual,
+              graceTicks: MANEUVER_CONTACT_GRACE_TICKS, rejectedReason: reason,
             });
           }
           return;
         }
       }
-
       const before = runtime.tactic;
       parentTransition(next, reason, rotateRoles);
-      if (before !== runtime.tactic && next === 'sweep' && reason.includes('0.75 seconds')) this.actualFastSearchTransitions += 1;
-      if (before !== runtime.tactic) this.logSupportContract(runtime.tactic);
+      if (before !== runtime.tactic && next === 'sweep' && reason.includes('0.75 seconds')) this.authorityActualFastSearchTransitions += 1;
+      if (before !== runtime.tactic) this.logAuthoritySupportContract(runtime.tactic);
     };
   }
 
-  private installTacticalOpportunitySelection(): void {
+  private installAuthorityOpportunitySelection(): void {
     const runtime = this.authorityInternals();
     const parentUpdateDoctrine = runtime.updateDoctrine.bind(this);
     runtime.updateDoctrine = (visibility: ReadonlyMap<string, boolean>): void => {
-      const visibleMembers = runtime.members.filter((member) => visibility.get(member.id) === true && this.memberAlive(member.id)).length;
-      const nearestThreatDistance = runtime.sharedLastKnownPosition === null
+      const alive = runtime.members.filter((member) => this.isAuthorityMemberAlive(member.id));
+      const visibleMembers = alive.filter((member) => visibility.get(member.id) === true).length;
+      const nearestThreatDistance = runtime.sharedLastKnownPosition === null || alive.length === 0
         ? Number.POSITIVE_INFINITY
-        : Math.min(...runtime.members.filter((member) => this.memberAlive(member.id)).map((member) => distance(member.position, runtime.sharedLastKnownPosition!)));
+        : Math.min(...alive.map((member) => distance(member.position, runtime.sharedLastKnownPosition!)));
       const opportunity = selectTacticalOpportunity({
         currentTactic: runtime.tactic,
         tacticTicks: Math.max(0, runtime.logicalTick - runtime.tacticStartedTick),
@@ -421,68 +368,61 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
         nearestThreatDistance,
         rescueActive: runtime.rescuePlan !== null,
       });
-
       if (opportunity === 'flank') {
-        this.tacticalOpportunityTransitions += 1;
-        runtime.transitionTactic('flank', 'A completed bound has stable visual confirmation and a valid support lane; exploit the live geometry with a committed flank instead of waiting for a stationary-target timeout.', true);
+        this.authorityOpportunityTransitions += 1;
+        runtime.transitionTactic('flank', 'Completed bound plus stable visual and a safe support lane create a flank opportunity; exploit geometry instead of waiting for a stationary-target timeout.', true);
         return;
       }
       if (opportunity === 'assault') {
-        this.tacticalOpportunityTransitions += 1;
-        runtime.transitionTactic('assault', 'Crossfire is physically established with at least one safe supporting lane and stable live contact; exploit the opening with a coordinated two-element assault.', true);
+        this.authorityOpportunityTransitions += 1;
+        runtime.transitionTactic('assault', 'Established crossfire plus one safe supporting lane and stable live contact create a coordinated assault opportunity.', true);
         return;
       }
-
       parentUpdateDoctrine(visibility);
     };
   }
 
-  private installAssaultClosePressure(): void {
+  private installAuthorityClosePressure(): void {
     const runtime = this.authorityInternals();
     const parentMovementTarget = runtime.movementTarget.bind(this);
     runtime.movementTarget = (member: HostMember): GridPoint | null => {
       const original = parentMovementTarget(member);
       if (runtime.alertState !== 'active' || runtime.tactic !== 'assault' || runtime.rescuePlan !== null) {
-        if (runtime.tactic !== 'assault') this.closePressureAgentId = null;
+        if (runtime.tactic !== 'assault') this.authorityClosePressureAgentId = null;
         return original;
       }
       const reaction = runtime.reactions.get(member.id);
       if (reaction !== undefined && reaction.untilTick > runtime.logicalTick) return original;
-      const owner = this.closePressureOwner();
+      const owner = this.authorityClosePressureOwner();
       if (owner === null || owner.id !== member.id) return original;
       const range = distance(member.position, runtime.player);
-      this.closePressureAgentId = owner.id;
+      this.authorityClosePressureAgentId = owner.id;
       if (range <= 1.35 || range > ASSAULT_CLOSE_PRESSURE_RANGE) return original;
       const target = selectClosePressureTarget(member.position, runtime.player);
       if (target === null) return original;
-      if (runtime.logicalTick !== this.lastClosePressureLogTick) {
-        this.lastClosePressureLogTick = runtime.logicalTick;
+      if (runtime.logicalTick !== this.authorityLastClosePressureLogTick) {
+        this.authorityLastClosePressureLogTick = runtime.logicalTick;
         runtime.log('agent', member.id, member.label, 'plan', `${member.label} claimed the final close-pressure lane while the other assault element preserves spacing.`, {
-          range: Number(range.toFixed(2)),
-          target: { ...target },
-          tactic: runtime.tactic,
-          policy: 'single_close_pressure_claim',
+          range: Number(range.toFixed(2)), target: { ...target }, tactic: runtime.tactic, policy: 'single_close_pressure_claim',
         });
       }
       return target;
     };
   }
 
-  private closePressureOwner(): HostMember | null {
+  private authorityClosePressureOwner(): HostMember | null {
     const runtime = this.authorityInternals();
-    const candidates = runtime.members
-      .filter((member) => member.role === 'assaulter' && member.targetVisible && this.memberAlive(member.id))
+    return runtime.members
+      .filter((member) => member.role === 'assaulter' && member.targetVisible && this.isAuthorityMemberAlive(member.id))
       .filter((member) => {
         const reaction = runtime.reactions.get(member.id);
         return reaction === undefined || reaction.untilTick <= runtime.logicalTick;
       })
-      .sort((left, right) => distance(left.position, runtime.player) - distance(right.position, runtime.player) || left.id.localeCompare(right.id, 'en'));
-    return candidates[0] ?? null;
+      .sort((left, right) => distance(left.position, runtime.player) - distance(right.position, runtime.player) || left.id.localeCompare(right.id, 'en'))[0] ?? null;
   }
 
-  private logSupportContract(tactic: string): void {
-    const state = super.getState();
-    const contracts = buildSupportContracts(state);
+  private logAuthoritySupportContract(tactic: string): void {
+    const contracts = buildSupportContracts(super.getState());
     if (contracts.length === 0) return;
     this.authorityInternals().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'roles', 'Fire-support contract attached to the active maneuver.', {
       tactic,
@@ -490,12 +430,12 @@ export class TacticalWizardSimulation extends TacticalWizardSimulationPerception
     });
   }
 
-  private authorityRecoveryOwnsMember(id: string): boolean {
+  private isAuthorityRecoveryOwner(id: string): boolean {
     const plan = this.authorityInternals().rescuePlan;
     return plan !== null && (plan.rescuerId === id || plan.covererId === id);
   }
 
-  private memberAlive(id: string): boolean {
+  private isAuthorityMemberAlive(id: string): boolean {
     return (this.authorityInternals().vitals.get(id)?.health ?? 1) > 0;
   }
 
@@ -535,32 +475,25 @@ export function selectTacticalOpportunity(input: {
   readonly rescueActive: boolean;
 }): TacticalOpportunity {
   if (input.rescueActive || input.lostContactTicks > 0 || input.visibleMembers <= 0) return null;
-  if (
-    input.currentTactic === 'bounding'
+  if (input.currentTactic === 'bounding'
     && input.boundingPhase >= 1
     && input.planCompletion >= 1
     && input.tacticTicks >= 6
     && input.stableContactTicks >= 3
-    && input.safeFireLanes >= 1
-  ) return 'flank';
-  if (
-    input.currentTactic === 'crossfire'
+    && input.safeFireLanes >= 1) return 'flank';
+  if (input.currentTactic === 'crossfire'
     && input.planCompletion >= 1
     && input.tacticTicks >= 6
     && input.stableContactTicks >= 3
     && input.safeFireLanes >= 1
-    && input.nearestThreatDistance <= 18
-  ) return 'assault';
+    && input.nearestThreatDistance <= 18) return 'assault';
   return null;
 }
 
 export function selectClosePressureTarget(origin: GridPoint, player: GridPoint): GridPoint | null {
   const away = normalize({ x: origin.x - player.x, y: origin.y - player.y });
-  for (const standOff of [CLOSE_PRESSURE_STANDOFF, 1.2, 1.35]) {
-    const candidate = {
-      x: player.x + away.x * standOff,
-      y: player.y + away.y * standOff,
-    };
+  for (const standOff of CLOSE_PRESSURE_STANDOFFS) {
+    const candidate = { x: player.x + away.x * standOff, y: player.y + away.y * standOff };
     const cell = toCell(candidate);
     if (!isWalkable(tacticalWizardNavigationGrid, cell)) continue;
     if (!hasLineOfSight(tacticalWizardNavigationGrid, cell, toCell(player))) continue;
