@@ -1,0 +1,77 @@
+.simulation-workspace-shell{
+  height:calc(100dvh - 142px);
+  min-height:560px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  overflow:hidden;
+}
+
+.simulation-workspace-shell>.player-combat-panel,
+.simulation-workspace-shell>.command-equipment-panel{
+  flex:0 0 auto;
+}
+
+.simulation-workspace-shell>.simulation-page{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+}
+
+.simulation-workspace-shell .simulation-layout{
+  height:100%;
+  min-height:0;
+  grid-template-columns:minmax(0,1fr) 272px;
+}
+
+.simulation-workspace-shell .simulation-stage{
+  min-height:0;
+  overflow:hidden;
+}
+
+.simulation-workspace-shell .simulation-recovery-wrap,
+.simulation-workspace-shell .simulation-canvas-wrap{
+  width:100%;
+  height:100%;
+}
+
+.simulation-workspace-shell .simulation-canvas{
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+.simulation-workspace-shell .simulation-sidebar{
+  min-height:0;
+  height:100%;
+  overflow:auto;
+}
+
+.simulation-workspace-shell .simulation-toolbar{
+  padding:6px 0;
+}
+
+.simulation-workspace-shell .map-help{
+  margin-top:4px;
+  min-height:18px;
+}
+
+.simulation-recovery-wrap{position:relative;line-height:0}
+.simulation-recovery-wrap>.simulation-canvas-wrap{position:relative;z-index:1}
+.simulation-recovery-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.sim-med-cache circle{fill:#17231d;stroke:#82c99d;stroke-width:1.3}
+.sim-med-cache path{fill:none;stroke:#b6e1c4;stroke-width:1.3}
+.sim-med-cache text{fill:#a8d7b9;font-size:7.5px;font-weight:700;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-rescue-link line{stroke:#84c99e;stroke-width:1.8;stroke-dasharray:6 5}
+.sim-rescue-link circle{fill:none;stroke:#88cda2;stroke-width:1.6;stroke-dasharray:3 3}
+.sim-rescue-link text{fill:#9ed6b2;font-size:8px;font-weight:700;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-rescue-cover line{stroke:#e0b66e;stroke-width:1.7;stroke-dasharray:4 4}
+.sim-rescue-cover text{fill:#e6c684;font-size:8px;font-weight:700;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-recovery-banner rect{fill:#0a1118;fill-opacity:.94;stroke:#80bd99;stroke-width:1}
+.sim-recovery-banner text{fill:#a8d7b8;font-size:8px;font-weight:800}
+
+@media(max-width:980px){
+  .simulation-workspace-shell{height:auto;min-height:0;overflow:visible}
+  .simulation-workspace-shell .simulation-layout{height:auto;grid-template-columns:1fr}
+  .simulation-workspace-shell .simulation-sidebar{height:auto;overflow:visible}
+}
