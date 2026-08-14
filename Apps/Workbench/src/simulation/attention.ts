@@ -10,6 +10,12 @@ export interface AttentionSample {
   readonly lookTarget: GridPoint | null;
 }
 
+export interface ActiveAttentionScan {
+  readonly scanPhase: number;
+  readonly facing: GridPoint;
+  readonly lookTarget: GridPoint;
+}
+
 export const ATTENTION_SCAN_FRAME_STRIDE = 7;
 export const ATTENTION_SCAN_OFFSETS = [-42, -18, 0, 28, 48, 0] as const;
 export const ATTENTION_LOOK_DISTANCE = 6;
@@ -19,7 +25,7 @@ export function scanAttention(
   anchor: GridPoint,
   motionFrame: number,
   agentIndex: number,
-): Pick<AttentionSample, 'scanPhase' | 'facing' | 'lookTarget'> {
+): ActiveAttentionScan {
   const phase = (Math.floor(motionFrame / ATTENTION_SCAN_FRAME_STRIDE) + Math.max(0, agentIndex) * 2) % ATTENTION_SCAN_OFFSETS.length;
   const base = normalizedDelta(position, anchor);
   const facing = rotate(base, ATTENTION_SCAN_OFFSETS[phase] ?? 0);
