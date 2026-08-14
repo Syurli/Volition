@@ -1,140 +1,116 @@
 import { describe, expect, it } from 'vitest';
-import type { GridPoint } from '../../Apps/Workbench/src/simulation/navigation';
-import { TacticalWizardSimulation as CurrentSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationCurrent';
-import { TacticalWizardSimulation as WorkbenchSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
 import {
-  reactionExecutionPriority,
-  resolveExecutionOwnership,
-  resolveExecutionTarget,
-  type ExecutionOwnershipInput,
-} from '../../Apps/Workbench/src/simulation/tacticalWizardExecutionOwnership';
+  capabilitySnapshot,
+  emergencyResupplyOwner,
+  logisticsMayCommit,
+  reactionPriority,
+  resolveExecutionContract,
+  type ExecutionHierarchyInput,
+} from '../../Apps/Workbench/src/simulation/tacticalWizardHierarchy';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
 
 const POSITION = { x: 4, y: 4 };
 const TACTICAL = { x: 16, y: 11 };
 const SUPPLY = { x: 23, y: 31 };
 
-describe('Tactical Wizard production execution ownership', () => {
-  it('uses composition at the Workbench boundary instead of inheriting the historical Current/Vxx stack', () => {
-    const simulation = new WorkbenchSimulation();
-    expect(simulation).not.toBeInstanceOf(CurrentSimulation);
+describe('Tactical Wizard fixed tactical hierarchy', () => {
+  it('publishes one fixed production hierarchy with movement and weapon authority in the execution contract', () => {
+    const simulation = new TacticalWizardSimulation();
     const state = simulation.getState();
-    expect(state.executionAuthority.architecture).toBe('composed_domains');
-    expect(state.executionAuthority.finalMovementAuthority).toBe('execution_resolver');
-    expect(state.executionAuthority.legacyHostPolicy).toBe('compatibility_substrate');
-    expect(state.executionAuthority.contracts).toHaveLength(state.agents.length);
+    expect(state.executionAuthority.architecture).toBe('fixed_tactical_hierarchy');
+    expect(state.executionAuthority.layers).toEqual(['perception', 'contact', 'tactical_planning', 'operational_arbitration', 'execution', 'host']);
+    expect(state.executionAuthority.finalMovementAuthority).toBe('execution_contract');
+    expect(state.executionAuthority.finalWeaponAuthority).toBe('execution_contract');
+    expect(state.executionAuthority.versionOverlayPolicy).toBe('forbidden');
   });
 
-  it('keeps committed crossfire movement above an urgent logistics destination', () => {
+  it('turns an approved logistics assignment into a plan lease instead of letting crossfire keep the body', () => {
     const input = baseInput({
-      task: 'crossfire',
-      tactic: 'crossfire',
+      tacticalTask: 'crossfire',
       tacticalTarget: TACTICAL,
-      logisticsTask: 'resupply_ammo',
-      resupplyTarget: SUPPLY,
+      tacticalProposal: TACTICAL,
+      logistics: { agentId: 'charlie', supplyId: 'SUP-02', task: 'resupply_ammo', target: SUPPLY, startedTick: 127, reason: 'critical ammo' },
     });
-    const decision = resolveExecutionOwnership(input);
-    expect(decision.owner).toBe('direct_combat');
-    expect(decision.priority).toBe(70);
-    expect(resolveExecutionTarget({ ...input, position: POSITION, legacyTarget: SUPPLY }, decision)).toEqual(TACTICAL);
+    const contract = resolveExecutionContract(input);
+    expect(contract.planOwner).toBe('logistics');
+    expect(contract.movementOwner).toBe('logistics');
+    expect(contract.movementTarget).toEqual(SUPPLY);
+    expect(contract.weaponAuthorized).toBe(false);
+    expect(contract.tacticalLeaseActive).toBe(false);
   });
 
-  it('does not promote grenade suppression into the old generic reaction-80 commitment', () => {
-    expect(reactionExecutionPriority('grenade_suppress')).toBe(20);
-    expect(reactionExecutionPriority('stunned')).toBe(80);
-
-    const input = baseInput({
-      task: 'flank_to_cover',
-      tactic: 'flank',
-      tacticalTarget: { x: 23, y: 17 },
-      reactionState: 'grenade_suppress',
-      reactionTarget: POSITION,
-    });
-    const decision = resolveExecutionOwnership(input);
-    expect(decision.owner).toBe('direct_combat');
-    expect(decision.priority).toBe(70);
+  it('keeps grenade suppression as priority 20 and does not erase or steal a committed logistics lease', () => {
+    expect(reactionPriority('grenade_suppress')).toBe(20);
+    const contract = resolveExecutionContract(baseInput({
+      logistics: { agentId: 'charlie', supplyId: 'SUP-02', task: 'resupply_ammo', target: SUPPLY, startedTick: 127, reason: 'critical ammo' },
+      reaction: { kind: 'grenade_suppress', target: POSITION, untilTick: 40 },
+    }));
+    expect(contract.planOwner).toBe('logistics');
+    expect(contract.movementOwner).toBe('logistics');
+    expect(contract.movementTarget).toEqual(SUPPLY);
   });
 
-  it('still lets hard reactions interrupt direct combat', () => {
-    const reactionTarget = { x: 3, y: 3 };
-    const input = baseInput({
-      task: 'flank_to_cover',
-      tactic: 'flank',
-      tacticalTarget: TACTICAL,
-      reactionState: 'stunned',
-      reactionTarget,
-    });
-    const decision = resolveExecutionOwnership(input);
-    expect(decision.owner).toBe('reaction');
-    expect(decision.priority).toBe(80);
-    expect(resolveExecutionTarget({ ...input, position: POSITION, legacyTarget: SUPPLY }, decision)).toEqual(reactionTarget);
+  it('allows a hard reaction to constrain logistics movement without deleting the logistics plan owner', () => {
+    const reactionTarget = { x: 2, y: 2 };
+    const contract = resolveExecutionContract(baseInput({
+      logistics: { agentId: 'charlie', supplyId: 'SUP-02', task: 'resupply_ammo', target: SUPPLY, startedTick: 127, reason: 'critical ammo' },
+      reaction: { kind: 'stunned', target: reactionTarget, untilTick: 40 },
+    }));
+    expect(contract.planOwner).toBe('logistics');
+    expect(contract.movementOwner).toBe('reaction');
+    expect(contract.movementTarget).toEqual(reactionTarget);
   });
 
-  it('preserves recovery ownership above soft reactions and logistics', () => {
-    const input = baseInput({
-      task: 'regroup',
-      tactic: 'regroup',
-      tacticalTarget: TACTICAL,
-      reactionState: 'smoke_retreat',
-      reactionTarget: { x: 1, y: 1 },
-      logisticsTask: 'resupply_mixed',
-      resupplyTarget: SUPPLY,
-      recoveryRole: 'rescuer',
-    });
-    const decision = resolveExecutionOwnership(input);
-    expect(decision.owner).toBe('recovery_rescue');
-    expect(decision.priority).toBe(95);
+  it('selects exactly one deterministic recovery owner when every living member is dry', () => {
+    const allDry = [
+      { id: 'twr:rifle-squad:alpha', alive: true, ammoRounds: 0 },
+      { id: 'twr:rifle-squad:bravo', alive: true, ammoRounds: 0 },
+      { id: 'twr:rifle-squad:charlie', alive: true, ammoRounds: 0 },
+    ];
+    expect(emergencyResupplyOwner(allDry)).toBe('twr:rifle-squad:alpha');
+    const allowed = allDry.filter((agent) => logisticsMayCommit({
+      agentId: agent.id,
+      alertState: 'active',
+      targetVisible: true,
+      isSuppressor: agent.id === 'twr:rifle-squad:alpha',
+      ammoRounds: agent.ammoRounds,
+      grenadeCount: 0,
+      livingAgents: allDry,
+    }));
+    expect(allowed.map((agent) => agent.id)).toEqual(['twr:rifle-squad:alpha']);
   });
 
-  it('keeps search contracts above logistics without inventing a new tactic', () => {
-    const input = baseInput({
-      task: 'search_sector',
-      tactic: 'sweep',
-      tacticalTarget: { x: 12, y: 9 },
-      logisticsTask: 'resupply_ammo',
-      resupplyTarget: SUPPLY,
-    });
-    const decision = resolveExecutionOwnership(input);
-    expect(decision.owner).toBe('search');
-    expect(decision.priority).toBe(60);
+  it('does not authorize rifle fire when the capability snapshot is dry', () => {
+    const contract = resolveExecutionContract(baseInput({ capability: capabilitySnapshot(true, 0, 1) }));
+    expect(contract.planOwner).toBe('tactical');
+    expect(contract.weaponOwner).toBe('none');
+    expect(contract.weaponAuthorized).toBe(false);
   });
 
-  it('keeps a production tactical target stable when the legacy proposal points at supply', () => {
-    const input = baseInput({
-      task: 'flank_to_cover',
-      tactic: 'flank',
-      tacticalTarget: { x: 23, y: 17 },
-      logisticsTask: 'resupply_ammo',
-      resupplyTarget: SUPPLY,
-    });
-    const decision = resolveExecutionOwnership(input);
-    const targets = Array.from({ length: 12 }, (_, index) => resolveExecutionTarget({
-      ...input,
-      position: POSITION,
-      legacyTarget: index % 2 === 0 ? SUPPLY : TACTICAL,
-    }, decision));
-    expect(targets.every((target) => samePoint(target, input.tacticalTarget))).toBe(true);
+  it('gives committed recovery ownership above logistics without creating another behavior layer', () => {
+    const contract = resolveExecutionContract(baseInput({
+      logistics: { agentId: 'charlie', supplyId: 'SUP-02', task: 'resupply_ammo', target: SUPPLY, startedTick: 127, reason: 'critical ammo' },
+      recovery: { role: 'rescuer', target: { x: 7, y: 7 }, patientId: 'bravo' },
+    }));
+    expect(contract.planOwner).toBe('recovery');
+    expect(contract.movementOwner).toBe('recovery_rescue');
   });
 });
 
-function baseInput(overrides: Partial<ExecutionOwnershipInput> = {}): ExecutionOwnershipInput {
+function baseInput(overrides: Partial<ExecutionHierarchyInput> = {}): ExecutionHierarchyInput {
   return {
-    agentId: 'twr:rifle-squad:charlie',
-    alive: true,
-    task: 'patrol',
-    tactic: 'bounding',
+    agentId: 'charlie',
+    logicalTick: 20,
+    position: POSITION,
     alertState: 'active',
-    tacticalTarget: null,
-    reactionState: 'none',
-    reactionTarget: null,
-    logisticsTask: 'none',
-    resupplyTarget: null,
-    recoveryRole: null,
-    counterfireActive: false,
+    tactic: 'crossfire',
+    tacticalTask: 'crossfire',
+    tacticalTarget: TACTICAL,
+    tacticalProposal: TACTICAL,
+    capability: capabilitySnapshot(true, 60, 2),
+    logistics: null,
+    reaction: null,
+    recovery: { role: 'none', target: null, patientId: null },
     ...overrides,
   };
-}
-
-function samePoint(left: GridPoint | null, right: GridPoint | null): boolean {
-  if (left === null || right === null) return left === right;
-  return Math.abs(left.x - right.x) < 1e-9 && Math.abs(left.y - right.y) < 1e-9;
 }
