@@ -4,11 +4,11 @@ import type { VolitionProjectConfig } from '@volition/schema';
 import { createTranslator, detectLocale, type Locale, type MessageKey } from './i18n';
 import { duplicateAsLocal, loadLocalProjects, saveLocalProjects, tacticalWizardExampleProject, type WorkbenchProject } from './projects';
 import { ProjectHub, OverviewPage } from './pages/ProjectPages';
-import { DesignPage } from './pages/DesignPageV2';
-import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePagesV3';
+import { DesignPage } from './pages/DesignWorkspacePage';
+import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePages';
 import { RunLogPage } from './pages/RunLogPage';
 import type { GridPoint } from './simulation/navigation';
-import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulation';
 import {
   DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT,
   applyTacticalWizardTestLoadout,

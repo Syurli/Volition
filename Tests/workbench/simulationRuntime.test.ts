@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation, tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation, tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulation';
 import { occupiedPositionsAreUnique } from '../../Apps/Workbench/src/simulation/squadTactics';
 
 describe('Tactical Wizard Workbench fixed runtime', () => {

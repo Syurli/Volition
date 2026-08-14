@@ -1,6 +1,6 @@
 import type { Locale } from '../i18n';
 import type { GridPoint } from '../simulation/navigation';
-import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
+import { tacticalWizardTestMap, type SimulationOverlaySettings, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
 import { SimulationCanvas as BaseSimulationCanvas } from './SimulationOperationsCanvas';
 
 const CELL = 22;

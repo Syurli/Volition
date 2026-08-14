@@ -2,7 +2,7 @@ import { type ChangeEvent, useState } from 'react';
 import type { Locale, Translate } from '../i18n';
 import { localizedIntent, localizedTactic } from '../assetLocalization';
 import { createBlankProject, parseWorkbenchProject, tacticalWizardExampleProject, type WorkbenchProject } from '../projects';
-import { tacticalWizardTestMap, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV3';
+import { tacticalWizardTestMap, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
 import { Metric } from '../components/Inspectors';
 
 export function ProjectHub({ t, locale, localProjects, onSelect, onCreate, onImport }: { readonly t: Translate; readonly locale: Locale; readonly localProjects: readonly WorkbenchProject[]; readonly onSelect: (project: WorkbenchProject) => void; readonly onCreate: (project: WorkbenchProject) => void; readonly onImport: (project: WorkbenchProject) => void }) {

@@ -23,15 +23,15 @@ export interface TacticalTestPoint {
 }
 
 /**
- * V11 Combat Sandbox keeps the proven 64x40 navigation envelope and the west
+ * Combat Sandbox keeps the proven 64x40 navigation envelope and the west
  * contact geometry used by historical regressions, but removes the old maze of
  * decorative micro-obstacles. Every remaining region has one explicit test job:
  * contact geometry, long-range incoming fire, lost-contact search, rescue access,
  * emergency smoke or field resupply.
  */
 export const tacticalWizardTestMap = {
-  id: 'tactical-wizard-combat-sandbox-v11',
-  name: 'Tactical Wizard Combat Sandbox V11',
+  id: 'tactical-wizard-combat-sandbox',
+  name: 'Tactical Wizard Combat Sandbox',
   width: 64,
   height: 40,
   blocked: [

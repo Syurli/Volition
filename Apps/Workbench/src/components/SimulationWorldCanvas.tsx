@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { Locale } from '../i18n';
 import { localizedAssetName, localizedTactic } from '../assetLocalization';
-import { tacticalWizardTestMap, type GrenadeVisual, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
+import { tacticalWizardTestMap, type GrenadeVisual, type SimulationOverlaySettings, type TacticalWizardAgentView, type TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
 import type { GridPoint } from '../simulation/navigation';
 
 const CELL = 22;

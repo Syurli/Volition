@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation, tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV3';
+import { TacticalWizardHost } from '../../Apps/Workbench/src/simulation/tacticalWizardHost';
+import { tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardTestMap';
 import { occupiedPositionsAreUnique } from '../../Apps/Workbench/src/simulation/squadTactics';
 
-describe('Tactical Wizard interactive Workbench example V3', () => {
+describe('Tactical Wizard semantic Tactical Host example', () => {
   it('executes patrol -> investigate -> engage -> search from real simulation stimuli', () => {
-    const simulation = new TacticalWizardSimulation();
+    const simulation = new TacticalWizardHost();
     expect(simulation.setPlayerPosition({ x: 4, y: 7 })).toBe(true); simulation.emitNoise();
     const investigated = simulation.step(); expect(investigated.selectedIntent).toBe('investigate'); expect(investigated.latestTrace?.observations.some((entry) => entry.kind === 'noise')).toBe(true);
     expect(simulation.setPlayerPosition({ x: 6, y: 2 })).toBe(true); const engaged = simulation.step(); expect(engaged.selectedIntent).toBe('engage'); expect(engaged.targetVisible).toBe(true);
@@ -13,18 +14,18 @@ describe('Tactical Wizard interactive Workbench example V3', () => {
   });
 
   it('decays individual search belief without leaking hidden live position into the source agent', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 5, y: 2 })).toBe(true); const engaged = simulation.step(); expect(engaged.selectedIntent).toBe('engage');
+    const simulation = new TacticalWizardHost(); expect(simulation.setPlayerPosition({ x: 5, y: 2 })).toBe(true); const engaged = simulation.step(); expect(engaged.selectedIntent).toBe('engage');
     expect(simulation.setPlayerPosition({ x: 14, y: 6 })).toBe(true); const searched = simulation.step(); expect(searched.selectedIntent).toBe('search'); expect(searched.latestTrace?.observations.find((entry) => entry.kind === 'visual_actor')?.position).toBeUndefined();
     let state = simulation.getState(); for (let index = 0; index < 24; index += 1) state = simulation.step(); expect(state.beliefConfidence).toBeLessThan(0.35);
   });
 
   it('runs a three-member squad on the expanded map without overlapping positions', () => {
-    const simulation = new TacticalWizardSimulation(); expect(tacticalWizardTestMap.width).toBeGreaterThanOrEqual(40); expect(tacticalWizardTestMap.height).toBeGreaterThanOrEqual(24);
+    const simulation = new TacticalWizardHost(); expect(tacticalWizardTestMap.width).toBeGreaterThanOrEqual(40); expect(tacticalWizardTestMap.height).toBeGreaterThanOrEqual(24);
     let state = simulation.getState(); expect(state.agents).toHaveLength(3); for (let index = 0; index < 100; index += 1) state = simulation.step(); expect(occupiedPositionsAreUnique(state.agents.map((agent) => agent.position))).toBe(true);
   });
 
   it('breaks a stationary firing loop with flank, crossfire, assault and regroup', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
+    const simulation = new TacticalWizardHost(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.getState(); const seenTactics = new Set<string>(); const rolesByAgent = new Map<string, Set<string>>(); const visualIdentity = new Map(state.agents.map((agent) => [agent.id, agent.visualKey]));
     for (let index = 0; index < 180; index += 1) {
       state = simulation.step(); seenTactics.add(state.squad.tactic);
@@ -37,7 +38,7 @@ describe('Tactical Wizard interactive Workbench example V3', () => {
   });
 
   it('creates visibly separated tactical targets during crossfire instead of orbiting one point', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
+    const simulation = new TacticalWizardHost(); expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.getState();
     for (let index = 0; index < 180 && state.squad.tactic !== 'crossfire'; index += 1) state = simulation.step();
     expect(state.squad.tactic).toBe('crossfire');
@@ -48,7 +49,7 @@ describe('Tactical Wizard interactive Workbench example V3', () => {
   });
 
   it('records player, squad and soldier-agent actions in an exportable structured run log', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 4, y: 7 })).toBe(true); expect(simulation.nudgePlayer(1, 0)).toBe(true); simulation.emitNoise();
+    const simulation = new TacticalWizardHost(); expect(simulation.setPlayerPosition({ x: 4, y: 7 })).toBe(true); expect(simulation.nudgePlayer(1, 0)).toBe(true); simulation.emitNoise();
     let state = simulation.step(); for (let index = 0; index < 5; index += 1) state = simulation.step();
     expect(state.runLog.some((entry) => entry.category === 'player' && entry.event === 'player_move')).toBe(true);
     expect(state.runLog.some((entry) => entry.category === 'player' && entry.event === 'player_noise')).toBe(true);
@@ -58,7 +59,7 @@ describe('Tactical Wizard interactive Workbench example V3', () => {
   });
 
   it('uses quarter-cell direct-control resolution and still creates footstep stimuli', () => {
-    const simulation = new TacticalWizardSimulation(); expect(simulation.setPlayerPosition({ x: 4, y: 6 })).toBe(true); const before = simulation.getState().player; expect(simulation.nudgePlayer(0, -1)).toBe(true);
-    const moved = simulation.getState(); expect(moved.movementResolution).toBe(0.25); expect(moved.player.y).toBe(before.y - 0.25); const state = simulation.step(); expect(state.latestTrace?.observations.some((entry) => entry.kind === 'noise' && entry.detail === 'footstep')).toBe(true);
+    const simulation = new TacticalWizardHost(); expect(simulation.setPlayerPosition({ x: 4, y: 6 })).toBe(true); const before = simulation.getState().player; expect(simulation.nudgePlayer(0, -1)).toBe(true);
+    const moved = simulation.getState(); expect(moved.movementResolution).toBe(0.2); expect(moved.player.y).toBe(before.y - 0.2); const state = simulation.step(); expect(state.latestTrace?.observations.some((entry) => entry.kind === 'noise' && entry.detail === 'footstep')).toBe(true);
   });
 });

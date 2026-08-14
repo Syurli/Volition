@@ -1,1 +1,1 @@
-export { SimulationCanvas } from './SimulationCanvasV3Base';
+export { SimulationCanvas } from './SimulationWorldCanvas';

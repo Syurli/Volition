@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compressRunLog } from '../../Apps/Workbench/src/simulation/runLogCompression';
-import type { RunLogEntry } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV3';
+import type { RunLogEntry } from '../../Apps/Workbench/src/simulation/tacticalWizardHostTypes';
 
 describe('Run-log export compression', () => {
   it('collapses sub-frame motion and repeated state polling while preserving causal events', () => {
