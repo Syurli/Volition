@@ -3,8 +3,8 @@ import type { ConnectionState, LiveTelemetryState } from '../connection';
 import type { Locale, MessageKey, Translate } from '../i18n';
 import { localizedAssetName, localizedIntent, localizedRole, localizedTactic } from '../assetLocalization';
 import type { GridPoint } from '../simulation/navigation';
-import type { BuddyRole, LocomotionMode, SimulationOverlaySettings, SpecialAction, TacticalOpportunityPurpose, TacticalTask, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
-import { SimulationCanvas } from '../components/SimulationCanvasV3';
+import type { BuddyRole, LocomotionMode, SimulationOverlaySettings, SpecialAction, TacticalOpportunityPurpose, TacticalTask, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
+import { SimulationCanvas } from '../components/SimulationCanvas';
 import { Candidates, EmptyState, Inspector, Metric, MetricLine } from '../components/Inspectors';
 
 export function SimulationPage({ t, locale, simulation, overlays, setOverlays, playing, setPlaying, speed, setSpeed, onStep, onReset, onNoise, onMove, onSetPlayer }: { readonly t: Translate; readonly locale: Locale; readonly simulation: TacticalWizardSimulationState; readonly overlays: SimulationOverlaySettings; readonly setOverlays: (settings: SimulationOverlaySettings) => void; readonly playing: boolean; readonly setPlaying: (value: boolean) => void; readonly speed: number; readonly setSpeed: (value: number) => void; readonly onStep: () => void; readonly onReset: () => void; readonly onNoise: () => void; readonly onMove: (dx: number, dy: number) => void; readonly onSetPlayer: (point: GridPoint) => void }) {

@@ -1,8 +1,8 @@
 import type { DecisionTrace } from '@volition/core';
 import type { Locale, Translate } from '../i18n';
 import type { GridPoint } from '../simulation/navigation';
-import type { SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
-import { DebugPage as BaseDebugPage, SimulationPage as BaseSimulationPage } from './RuntimeCombatPages';
+import type { SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
+import { DebugPage as BaseDebugPage, SimulationPage as BaseSimulationPage } from './RuntimeCorePages';
 
 interface SimulationProps { readonly t: Translate; readonly locale: Locale; readonly simulation: TacticalWizardSimulationState; readonly overlays: SimulationOverlaySettings; readonly setOverlays: (settings: SimulationOverlaySettings) => void; readonly playing: boolean; readonly setPlaying: (value: boolean) => void; readonly speed: number; readonly setSpeed: (value: number) => void; readonly onStep: () => void; readonly onReset: () => void; readonly onNoise: () => void; readonly onMove: (dx: number, dy: number) => void; readonly onSetPlayer: (point: GridPoint) => void; }
 

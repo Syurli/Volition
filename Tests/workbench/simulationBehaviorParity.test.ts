@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulation';
 
 describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
   it('exposes a self-identifying semantic runtime and executable single-shot acoustic investigation', () => {
@@ -8,10 +8,10 @@ describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
 
     expect(simulation.playerFireAt({ x: 16.55, y: 9.83 })).toBe(true);
     let state = simulation.getState();
-    expect(state.runtimeIdentity.entrypoint).toBe('TacticalWizardSimulationV4');
-    expect(state.runtimeIdentity.behaviorRevision).toBe('fixed-hierarchy-parity-r1');
+    expect(state.runtimeIdentity.entrypoint).toBe('TacticalWizardSimulation');
+    expect(state.runtimeIdentity.behaviorProfile).toBe('active_attention_recovery');
     expect(state.runtimeIdentity.features.contactMemory).toBe(true);
-    expect(state.runLog.some((entry) => entry.event === 'session' && entry.data.behaviorRevision === 'fixed-hierarchy-parity-r1')).toBe(true);
+    expect(state.runLog.some((entry) => entry.event === 'session' && entry.data.behaviorProfile === 'active_attention_recovery')).toBe(true);
     expect(state.perceptionIntegration.hearingRadius).toBe(28);
     expect(state.perceptionIntegration.visionRange).toBe(20);
     expect(state.perceptionIntegration.acousticInvestigationActive).toBe(true);

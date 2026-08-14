@@ -5,7 +5,7 @@ import { discoverCoverSlots, selectAssaultPosition, type CoverSlot } from './squ
 import { selectCoordinatedCoverSlot as selectCoverSlot } from './tacticalPositioning';
 import { centroid, pairwiseSpread, selectSectorPoint } from './maneuverGeometry';
 import { buildFireLaneBlockedCells, findFriendlyInFireLane, lookPoint, makeSearchPattern, type FireLane } from './combatCoordination';
-import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from './tacticalWizardTestMapV7';
+import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from './tacticalWizardTestMap';
 import {
   type RunLogCategory,
   type RunLogEntry,
@@ -15,11 +15,11 @@ import {
   type SquadAlertState,
   type TacticalRole,
   type TacticalWizardAgentView as BaseAgentView,
-  type TacticalWizardSimulationState as BaseSimulationState,
-} from './tacticalWizardSimulationV3';
+  type TacticalWizardHostState as BaseSimulationState,
+} from './tacticalWizardHostTypes';
 
-export type { SimulationOverlaySettings } from './tacticalWizardSimulationV3';
-export { tacticalWizardTestMap } from './tacticalWizardTestMapV7';
+export type { SimulationOverlaySettings } from './tacticalWizardHostTypes';
+export { tacticalWizardTestMap } from './tacticalWizardTestMap';
 
 export type TacticalTask = 'patrol' | 'suppress' | 'bound_to_cover' | 'hold_cover' | 'flank_to_cover' | 'crossfire' | 'assault' | 'search_sector' | 'overwatch' | 'regroup';
 export type CoverState = 'none' | 'moving' | 'covered' | 'peeking';
@@ -170,7 +170,7 @@ interface MutableMember {
   meleeCooldownUntilTick: number;
 }
 
-export class TacticalWizardSimulation {
+export class TacticalWizardHost {
   private members: MutableMember[] = createMembers();
   private logicalTick = 0;
   private motionFrame = 0;
@@ -209,7 +209,7 @@ export class TacticalWizardSimulation {
   private meleeClaimId: string | null = null;
   private planRevision = 0;
   private lastPlanReplanTick = -999;
-  private readonly eventLog: string[] = ['Simulation ready. V7 fire-lane deconfliction / compound map initialized.'];
+  private readonly eventLog: string[] = ['Simulation ready. Host fire-lane deconfliction / compound map initialized.'];
   private runLog: RunLogEntry[] = [];
   private runLogSequence = 0;
 
@@ -221,7 +221,7 @@ export class TacticalWizardSimulation {
   readonly agentMoveSpeed = AGENT_MOVE_SPEED;
 
   constructor() {
-    this.log('system', 'simulation', 'Volition Simulation', 'session', 'V7 coordinated-position tactical simulation started.', {
+    this.log('system', 'simulation', 'Volition Simulation', 'session', 'Host coordinated-position tactical simulation started.', {
       map: tacticalWizardTestMap.id,
       motionHz: MOTION_HZ,
       decisionHz: 1 / DECISION_INTERVAL_SECONDS,
@@ -270,10 +270,10 @@ export class TacticalWizardSimulation {
     this.meleeClaimId = null;
     this.planRevision = 0;
     this.lastPlanReplanTick = -999;
-    this.eventLog.splice(0, this.eventLog.length, 'Simulation reset. V7 fire-lane deconfliction / compound map initialized.');
+    this.eventLog.splice(0, this.eventLog.length, 'Simulation reset. Host fire-lane deconfliction / compound map initialized.');
     this.runLog = [];
     this.runLogSequence = 0;
-    this.log('system', 'simulation', 'Volition Simulation', 'session', 'Simulation reset; V7 tactical run started.', {
+    this.log('system', 'simulation', 'Volition Simulation', 'session', 'Simulation reset; Host tactical run started.', {
       map: tacticalWizardTestMap.id,
       motionHz: MOTION_HZ,
       decisionHz: 1 / DECISION_INTERVAL_SECONDS,
@@ -805,7 +805,7 @@ export class TacticalWizardSimulation {
     this.applyRoles();
     this.refreshTacticalPlan();
     this.pushEvent(`T${this.logicalTick}: shared alert active; mutual-support task allocation committed.`);
-    this.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'alert', 'Shared combat alert activated with V7 coordinated-position task allocation.', { source: source.id, tactic: this.tactic });
+    this.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'alert', 'Shared combat alert activated with Host coordinated-position task allocation.', { source: source.id, tactic: this.tactic });
     this.logRoleAssignments();
   }
 

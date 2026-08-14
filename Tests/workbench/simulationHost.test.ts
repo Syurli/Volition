@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createGrid, findPath, gridKey, isWalkable } from '../../Apps/Workbench/src/simulation/navigation';
 import { selectCoordinatedCoverSlot, tacticalSlotsConflict } from '../../Apps/Workbench/src/simulation/tacticalPositioning';
-import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardTestMapV7';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV7';
+import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from '../../Apps/Workbench/src/simulation/tacticalWizardTestMap';
+import { TacticalWizardHost } from '../../Apps/Workbench/src/simulation/tacticalWizardHost';
 import type { CoverSlot } from '../../Apps/Workbench/src/simulation/squadTactics';
 
-describe('Tactical Wizard V7 fire-lane deconfliction and compound map', () => {
-  it('keeps every authored tactical test point walkable and reachable from the legacy yard', () => {
+describe('Tactical Wizard Host fire-lane deconfliction and compound map', () => {
+  it('keeps every authored tactical test point walkable and reachable from the training yard', () => {
     expect(tacticalWizardTestMap.width).toBeGreaterThan(48);
     expect(tacticalWizardTestMap.height).toBeGreaterThan(30);
     expect(tacticalWizardTestMap.zones.length).toBeGreaterThanOrEqual(7);
@@ -33,7 +33,7 @@ describe('Tactical Wizard V7 fire-lane deconfliction and compound map', () => {
   });
 
   it('forms separated crossfire targets instead of assigning adjacent firing positions', () => {
-    const simulation = new TacticalWizardSimulation();
+    const simulation = new TacticalWizardHost();
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.getState();
     for (let index = 0; index < 260 && state.squad.tactic !== 'crossfire'; index += 1) state = simulation.step();
@@ -57,7 +57,7 @@ describe('Tactical Wizard V7 fire-lane deconfliction and compound map', () => {
   });
 
   it('keeps grenade events on a long explicit flight plus effect lifecycle', () => {
-    const simulation = new TacticalWizardSimulation();
+    const simulation = new TacticalWizardHost();
     expect(simulation.setPlayerPosition({ x: 14, y: 2 })).toBe(true);
     let state = simulation.getState();
     for (let index = 0; index < 24; index += 1) state = simulation.step();

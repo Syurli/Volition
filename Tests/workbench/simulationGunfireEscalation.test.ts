@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulation';
 
 describe('Tactical Wizard gunfire escalation regression', () => {
   it('promotes repeated audible rifle fire into the fixed-hierarchy combat alert without requiring direct vision', () => {

@@ -7,7 +7,7 @@ import {
   resolveExecutionContract,
   type ExecutionHierarchyInput,
 } from '../../Apps/Workbench/src/simulation/tacticalWizardHierarchy';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulation';
 
 const POSITION = { x: 4, y: 4 };
 const TACTICAL = { x: 16, y: 11 };

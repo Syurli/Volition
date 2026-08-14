@@ -1,4 +1,4 @@
-import type { RunLogEntry, RunLogValue } from './tacticalWizardSimulationV3';
+import type { RunLogEntry, RunLogValue } from './tacticalWizardHostTypes';
 
 export interface RunLogCompressionStats {
   readonly sourceEntries: number;

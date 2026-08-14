@@ -1,8 +1,8 @@
 import type { DecisionTrace } from '@volition/core';
 import type { Locale, Translate } from '../i18n';
 import type { GridPoint } from '../simulation/navigation';
-import type { RecoveryTask, SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulationV4';
-import { DebugPage as BaseDebugPage, SimulationPage as BaseSimulationPage } from './RuntimePagesV3Base';
+import type { RecoveryTask, SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
+import { DebugPage as BaseDebugPage, SimulationPage as BaseSimulationPage } from './RuntimeUtilityPages';
 
 interface SimulationProps {
   readonly t: Translate;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulationV4';
+import { TacticalWizardSimulation } from '../../Apps/Workbench/src/simulation/tacticalWizardSimulation';
 
 const ALPHA = 'twr:rifle-squad:alpha';
 const BRAVO = 'twr:rifle-squad:bravo';
