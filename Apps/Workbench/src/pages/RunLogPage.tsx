@@ -23,10 +23,14 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
   const exportLog = () => {
     const compressed = compressRunLog(simulation.runLog);
     const payload = {
-      format: 'volition.run-log.v6',
+      format: 'volition.run-log.v7',
       generatedAt: new Date().toISOString(),
       project: 'tactical-wizard-reference',
-      runtimeArchitecture: 'fixed_tactical_hierarchy',
+      runtimeCommit: simulation.runtimeIdentity.commit,
+      runtimeEntrypoint: simulation.runtimeIdentity.entrypoint,
+      runtimeArchitecture: simulation.runtimeIdentity.architecture,
+      behaviorRevision: simulation.runtimeIdentity.behaviorRevision,
+      runtimeIdentity: simulation.runtimeIdentity,
       logCompression: {
         ...compressed.stats,
         policy: 'causal-events-lossless_motion-keyframes_state-spans',
@@ -50,6 +54,8 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
         threatResponse: simulation.threatResponse,
         threatAwareness: simulation.threatAwareness,
         contactTrack: simulation.contactTrack,
+        perceptionIntegration: simulation.perceptionIntegration,
+        runtimeIdentity: simulation.runtimeIdentity,
         executionAuthority: simulation.executionAuthority,
         combatAuthority: simulation.combatAuthority,
         logisticsLifecycle: simulation.logisticsLifecycle,
@@ -103,8 +109,8 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
 
   const reductionPercent = Math.round(compressionPreview.stats.reductionRatio * 100);
   return <section className="page-stack run-log-page">
-    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('固定战术层级运行时保留完整诊断缓冲；导出同时记录每名代理的 Plan / Movement / Weapon 执行合同，并把 30Hz 位移合并为决策 Tick 关键帧。后续复盘以 executionAuthority 为最终执行真相，不再从旧版本 Authority 反推。', 'The fixed tactical hierarchy keeps the full diagnostic buffer and exports each agent\'s Plan / Movement / Weapon execution contract. Motion is compressed into decision-tick keyframes; executionAuthority is the canonical execution truth.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
-    <div className="metric-grid"><LogMetric label={L('运行时记录', 'Runtime entries')} value={simulation.runLog.length} /><LogMetric label={L('预计导出', 'Export entries')} value={compressionPreview.stats.exportedEntries} /><LogMetric label={L('条目压缩', 'Entry reduction')} value={`${reductionPercent}%`} /><LogMetric label={L('小队记录', 'Squad events')} value={squadEvents} /></div>
+    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('固定战术层级运行时保留完整诊断缓冲；导出同时记录构建 Commit、语义 Runtime、行为修订号和每名代理的执行合同。后续复盘先校验 runtimeIdentity，再以 executionAuthority 为最终执行真相。', 'The fixed tactical hierarchy keeps the full diagnostic buffer and exports the build commit, semantic runtime, behavior revision, and each agent execution contract. Reviews verify runtimeIdentity first and use executionAuthority as the canonical execution truth.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
+    <div className="metric-grid"><LogMetric label={L('运行时 Commit', 'Runtime commit')} value={simulation.runtimeIdentity.commit.slice(0, 8)} /><LogMetric label={L('行为修订', 'Behavior revision')} value={simulation.runtimeIdentity.behaviorRevision} /><LogMetric label={L('运行时记录', 'Runtime entries')} value={simulation.runLog.length} /><LogMetric label={L('预计导出', 'Export entries')} value={compressionPreview.stats.exportedEntries} /><LogMetric label={L('条目压缩', 'Entry reduction')} value={`${reductionPercent}%`} /><LogMetric label={L('小队记录', 'Squad events')} value={squadEvents} /></div>
     <section className="surface run-log-filter"><label>{L('类型', 'Category')}<select value={category} onChange={(event) => setCategory(event.target.value as 'all' | RunLogCategory)}><option value="all">{L('全部', 'All')}</option><option value="player">{L('玩家', 'Player')}</option><option value="squad">{L('小队代理', 'Squad')}</option><option value="agent">{L('士兵代理', 'Agent')}</option><option value="system">{L('系统', 'System')}</option></select></label><label>{L('搜索', 'Search')}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={L('代理、事件、战术、补给合同、执行所有权、救援…', 'agent, event, tactic, logistics lease, execution owner, recovery…')} /></label><span>{filtered.length} / {simulation.runLog.length} · {L('决策', 'decisions')} {agentDecisions} · {L('玩家', 'player')} {playerActions}</span></section>
     <section className="surface run-log-surface"><div className="run-log-table-head"><span>Tick</span><span>{L('主体', 'Actor')}</span><span>{L('事件', 'Event')}</span><span>{L('摘要', 'Summary')}</span><span>{L('数据', 'Data')}</span></div><div className="run-log-table-body">{filtered.slice().reverse().map((entry) => <LogRow key={entry.sequence} entry={entry} locale={locale} />)}</div></section>
   </section>;
@@ -129,6 +135,7 @@ function LogRow({ entry, locale }: { readonly entry: RunLogEntry; readonly local
 function localizeSummary(entry: RunLogEntry, locale: Locale): string {
   if (locale !== 'zh-CN') return entry.summary;
   if (entry.summary.includes('Fixed tactical hierarchy')) return '固定战术层级运行时已启用：感知 → 接触记忆 → 战术规划 → 运行仲裁 → 执行合同 → Host。';
+  if (entry.summary.includes('Fixed-hierarchy behavior parity runtime')) return `行为语义运行时已启用：${String(entry.data.behaviorRevision ?? 'unknown')} · ${String(entry.data.runtimeCommit ?? 'unknown').slice(0, 8)}。`;
   if (entry.summary.includes('field resupply')) return '代理获得正式补给执行租约；补给完成前战术规划不再夺回其身体控制权。';
   if (entry.summary.includes('Recovery contract committed')) return '救援合同已原子提交；救援者与安全位由固定层级统一执行。';
   if (entry.event === 'decision') return `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}：${localizedRole(String(entry.data.role ?? ''), locale)}，选择 ${localizedIntent(String(entry.data.intent ?? ''), locale)}；小队战术 ${localizedTactic(String(entry.data.tactic ?? ''), locale)}；弹药 ${String(entry.data.ammoRounds ?? '?')}（${String(entry.data.burstsRemaining ?? '?')} 个 burst）。`;
