@@ -21,9 +21,11 @@ jobs:
         with:
           node-version: 22
       - name: Apply semantic runtime migration
-        run: node Scripts/migrate-tactical-runtime.mjs
+        run: |
+          node Scripts/migrate-tactical-runtime.mjs
+          node Scripts/fix-tactical-runtime-migration.mjs
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-package-lock
       - name: Typecheck
         run: npm run typecheck
       - name: Test
