@@ -6,8 +6,8 @@ const BRAVO = 'twr:rifle-squad:bravo';
 const CHARLIE = 'twr:rifle-squad:charlie';
 
 describe('Tactical Wizard fixed hierarchy integration', () => {
-  it('commits a critical dry member to logistics and moves its execution target to the supply cache', () => {
-    const simulation = activeSimulation();
+  it('commits a critical dry member to logistics when no higher-priority direct-combat lease exists', () => {
+    const simulation = idleSimulation();
     expect(simulation.setAgentEquipment(ALPHA, { ammoRounds: 0 })).toBe(true);
     expect(simulation.setAgentEquipment(BRAVO, { ammoRounds: 60 })).toBe(true);
     expect(simulation.setAgentEquipment(CHARLIE, { ammoRounds: 60 })).toBe(true);
@@ -29,8 +29,8 @@ describe('Tactical Wizard fixed hierarchy integration', () => {
     expect(distance(after, target)).toBeLessThan(beforeDistance);
   });
 
-  it('keeps an approved logistics lease through grenade suppression instead of deleting the assignment', () => {
-    const simulation = activeSimulation();
+  it('keeps an already-approved logistics lease through low-priority grenade suppression', () => {
+    const simulation = idleSimulation();
     simulation.setAgentEquipment(ALPHA, { ammoRounds: 0 });
     simulation.setAgentEquipment(BRAVO, { ammoRounds: 60 });
     simulation.setAgentEquipment(CHARLIE, { ammoRounds: 60 });
@@ -47,8 +47,8 @@ describe('Tactical Wizard fixed hierarchy integration', () => {
     expect(contract.movementOwner).toBe('logistics');
   });
 
-  it('selects exactly one logistics owner when the whole living squad is dry', () => {
-    const simulation = activeSimulation();
+  it('selects exactly one deterministic emergency logistics owner when the whole idle squad is dry', () => {
+    const simulation = idleSimulation();
     for (const id of [ALPHA, BRAVO, CHARLIE]) simulation.setAgentEquipment(id, { ammoRounds: 0, grenades: 0 });
     const state = simulation.step();
     expect(state.logisticsLifecycle.state).toBe('assigned');
@@ -86,6 +86,12 @@ describe('Tactical Wizard fixed hierarchy integration', () => {
     }
   });
 });
+
+function idleSimulation(): TacticalWizardSimulation {
+  const simulation = new TacticalWizardSimulation();
+  expect(simulation.getState().squad.alertState).toBe('idle');
+  return simulation;
+}
 
 function activeSimulation(): TacticalWizardSimulation {
   const simulation = new TacticalWizardSimulation();

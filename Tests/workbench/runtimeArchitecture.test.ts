@@ -23,7 +23,7 @@ const retiredOverlays = [
 ];
 
 describe('Tactical Wizard fixed hierarchy architecture guardrails', () => {
-  it('routes production through one composition runtime and never through the retired overlay chain', () => {
+  it('routes production through one fixed-hierarchy runtime and never through the retired overlay chain', () => {
     const production = readFileSync(resolve(simulationDir, 'tacticalWizardRuntime.ts'), 'utf8');
     const entry = readFileSync(resolve(simulationDir, 'tacticalWizardSimulationV4.ts'), 'utf8');
 
@@ -32,8 +32,11 @@ describe('Tactical Wizard fixed hierarchy architecture guardrails', () => {
     expect(production).toContain("from './tacticalWizardHierarchy'");
     expect(production).toContain("from './tacticalWizardSimulationV7'");
     expect(production).not.toMatch(/tacticalWizardSimulation(?:Current|Integrated|ExecutionIntegrated|PerceptionIntegrated|ThreatAuthority|V(?:8|9|1[0-8]))/);
-    expect(entry).toContain('TacticalWizardRuntime as TacticalWizardSimulation');
-    expect(entry).not.toMatch(/tacticalWizardSimulationCurrent|tacticalWizardExecutionOwnership/);
+
+    expect(entry).toContain("from './tacticalWizardRuntime'");
+    expect(entry).toContain('class TacticalWizardSimulation extends TacticalWizardRuntime');
+    expect(entry).toContain("behaviorRevision: 'fixed-hierarchy-parity-r1'");
+    expect(entry).not.toMatch(/tacticalWizardSimulationCurrent|tacticalWizardExecutionOwnership|tacticalWizardSimulation(?:Integrated|ExecutionIntegrated|PerceptionIntegrated|ThreatAuthority|V(?:8|9|1[0-8]))/);
   });
 
   it('physically removes retired overlay-style behavior layers from the simulation tree', () => {
