@@ -1,4 +1,4 @@
-# Volition Schema
+# Willform Schema
 
 Schema 0.1 定义首个跨引擎 portable project/Agent 配置合同：显式版本、稳定 ID、Decision Policy reference、Memory decay、Context/Stimulus type references、Intent→Behavior reference、capabilities 与 extension namespace。
 

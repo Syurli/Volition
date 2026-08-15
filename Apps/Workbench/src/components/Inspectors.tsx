@@ -1,4 +1,4 @@
-import type { DecisionTrace } from '@volition/core';
+import type { DecisionTrace } from '@willform/core';
 
 export function Inspector({ title, value }: { readonly title: string; readonly value: unknown }) {
   return <article className="surface inspector"><h3>{title}</h3><pre>{JSON.stringify(value, null, 2)}</pre></article>;

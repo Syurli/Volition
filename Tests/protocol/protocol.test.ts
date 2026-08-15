@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deserializeEnvelope, envelope, serializeEnvelope } from '@volition/protocol';
+import { deserializeEnvelope, envelope, serializeEnvelope } from '@willform/protocol';
 
 describe('Protocol 0.1', () => {
   it('round trips a handshake independently of transport', () => {

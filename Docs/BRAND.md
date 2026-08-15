@@ -1,4 +1,4 @@
-# Volition Brand & Naming
+# Willform Brand & Naming
 
 ## Official Identity
 
@@ -8,7 +8,7 @@
 
 ### English Name
 
-**Volition**
+**Willform**
 
 ### Technical Descriptor
 
@@ -20,20 +20,20 @@
 
 推荐完整写法：
 
-> **能动 Volition — A BAIGE Project**  
+> **能动 Willform — A BAIGE Project**  
 > *Agent Decision & Behavior Framework*
 
 ## Meaning
 
 “能动”强调主体基于环境与目标进行判断并采取行动的能力。
 
-`Volition` 对应意志、选择并采取行动的能力。品牌层使用 **Volition**，架构哲学中可以使用 **Agency** 描述 Agent 的自主作用能力。
+`Willform` 对应意志、选择并采取行动的能力。品牌层使用 **Willform**，架构哲学中可以使用 **Agency** 描述 Agent 的自主作用能力。
 
 内部设计理念：
 
 > **Agency over scripting.**
 
-它不是对外必须出现的广告语，而是用于提醒开发：Volition 的价值在于组织 Agent 自身的上下文、选择与行动，而不是制造更多硬编码脚本层。
+它不是对外必须出现的广告语，而是用于提醒开发：Willform 的价值在于组织 Agent 自身的上下文、选择与行动，而不是制造更多硬编码脚本层。
 
 ## BAIGE Product Family
 
@@ -41,7 +41,7 @@
 
 - **百舸 BAIGE** — 母品牌 / 技术体系
 - **流形 Flowform** — Neural Motion Framework
-- **能动 Volition** — Agent Decision & Behavior Framework
+- **能动 Willform** — Agent Decision & Behavior Framework
 
 统一品牌语法：
 
@@ -51,13 +51,13 @@
 
 ## Repository & Code Naming
 
-仓库：`Volition`
+仓库：`Willform`
 
 核心模块：
 
-- `VolitionCore`
-- `VolitionRuntime`
-- `VolitionEditor`
+- `WillformCore`
+- `WillformRuntime`
+- `WillformEditor`
 
 禁止使用以下过渡名：
 
@@ -65,7 +65,7 @@
 - `UDMBFNext`
 - `NewUDMBF`
 
-旧称 UDMBF 只用于描述 1.0 历史项目，不作为 Volition 的公开副标题。
+旧称 UDMBF 只用于描述 1.0 历史项目，不作为 Willform 的公开副标题。
 
 ## Public Copy
 
@@ -79,13 +79,13 @@
 
 较完整介绍：
 
-> Volition is a modular framework for organizing game-agent context, decisions, behavior execution, resource ownership, and runtime scheduling.
+> Willform is a modular framework for organizing game-agent context, decisions, behavior execution, resource ownership, and runtime scheduling.
 
 ## Store / Release Naming
 
 建议产品标题：
 
-> **Volition — Agent Decision & Behavior Framework**
+> **Willform — Agent Decision & Behavior Framework**
 
 品牌署名：
 
@@ -93,8 +93,8 @@
 
 不建议使用：
 
-- `BAIGE Volition Agent Behavior Framework Plugin`
-- `UDMBF 2.0 / Volition`
+- `BAIGE Willform Agent Behavior Framework Plugin`
+- `UDMBF 2.0 / Willform`
 - 任何把 StateTree 写进永久产品名称的形式
 
 ## Visual Hierarchy
@@ -103,7 +103,7 @@
 
 ```text
 能 动
-VOLITION
+WILLFORM
 
 Agent Decision & Behavior Framework
 A BAIGE Project

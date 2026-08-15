@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideSquadDoctrine } from '@volition/example-tactical-wizard';
+import { decideSquadDoctrine } from '@willform/example-tactical-wizard';
 
 describe('Tactical Wizard squad doctrine', () => {
   const baseFacts = { contactTicks: 4, stationaryTargetTicks: 0, tacticTicks: 4, boundingPhase: 0, visibleMembers: 1, stalledMembers: 0, lostContactTicks: 0, maneuverCycle: 0, planCompletion: 1, stableContactTicks: 4 } as const;

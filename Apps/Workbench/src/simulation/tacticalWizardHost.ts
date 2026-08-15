@@ -1,5 +1,5 @@
-import type { AgentRuntimeSnapshot, DecisionTrace, Stimulus, Vector3 } from '@volition/core';
-import { createTacticalWizardReferenceRuntime, decideSquadDoctrine, type SquadTactic } from '@volition/example-tactical-wizard';
+import type { AgentRuntimeSnapshot, DecisionTrace, Stimulus, Vector3 } from '@willform/core';
+import { createTacticalWizardReferenceRuntime, decideSquadDoctrine, type SquadTactic } from '@willform/example-tactical-wizard';
 import { findPath, gridKey, hasLineOfSight, isWalkable, type GridPoint } from './navigation';
 import { discoverCoverSlots, selectAssaultPosition, type CoverSlot } from './squadTactics';
 import { selectCoordinatedCoverSlot as selectCoverSlot } from './tacticalPositioning';
@@ -221,7 +221,7 @@ export class TacticalWizardHost {
   readonly agentMoveSpeed = AGENT_MOVE_SPEED;
 
   constructor() {
-    this.log('system', 'simulation', 'Volition Simulation', 'session', 'Host coordinated-position tactical simulation started.', {
+    this.log('system', 'simulation', 'Willform Simulation', 'session', 'Host coordinated-position tactical simulation started.', {
       map: tacticalWizardTestMap.id,
       motionHz: MOTION_HZ,
       decisionHz: 1 / DECISION_INTERVAL_SECONDS,
@@ -273,7 +273,7 @@ export class TacticalWizardHost {
     this.eventLog.splice(0, this.eventLog.length, 'Simulation reset. Host fire-lane deconfliction / compound map initialized.');
     this.runLog = [];
     this.runLogSequence = 0;
-    this.log('system', 'simulation', 'Volition Simulation', 'session', 'Simulation reset; Host tactical run started.', {
+    this.log('system', 'simulation', 'Willform Simulation', 'session', 'Simulation reset; Host tactical run started.', {
       map: tacticalWizardTestMap.id,
       motionHz: MOTION_HZ,
       decisionHz: 1 / DECISION_INTERVAL_SECONDS,

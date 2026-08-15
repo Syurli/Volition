@@ -12,7 +12,7 @@ The implementation is a game-AI abstraction. It borrows broad coordination princ
 
 ### F.E.A.R.
 
-The public GDC material describes enemies as squads that suppress while allies move, form organized search parties, dynamically re-plan alternate approaches, and use grenades to change a player's position. Volition uses those ideas as coordination goals rather than copying a particular planner architecture.
+The public GDC material describes enemies as squads that suppress while allies move, form organized search parties, dynamically re-plan alternate approaches, and use grenades to change a player's position. Willform uses those ideas as coordination goals rather than copying a particular planner architecture.
 
 ### Halo
 

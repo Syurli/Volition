@@ -8,7 +8,7 @@ A squad can change high-level tactic labels without producing meaningfully diffe
 
 ## Decision
 
-Volition distinguishes **doctrine variety** from **spatial execution variety**.
+Willform distinguishes **doctrine variety** from **spatial execution variety**.
 
 - Portable doctrine decides why the squad changes mode from portable facts.
 - The Host resolves each tactic with a different spatial query and execution envelope.
@@ -26,7 +26,7 @@ Agent proxy color is stable identity metadata. Tactical roles must not recolor A
 
 ## Run Log
 
-Workbench maintains a structured session log with player actions, squad-level tactical events, and soldier-agent perception/decision/action events. The log is exportable as `volition.run-log.v1` JSON so a captured session can be reproduced and reviewed without screenshots alone.
+Workbench maintains a structured session log with player actions, squad-level tactical events, and soldier-agent perception/decision/action events. The log is exportable as `willform.run-log.v1` JSON so a captured session can be reproduced and reviewed without screenshots alone.
 
 Run logging is observational. It must not alter the decision stream or expose hidden target state that the runtime did not legitimately observe.
 

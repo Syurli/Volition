@@ -1,5 +1,5 @@
-import type { AgentRuntimeSnapshot, DecisionTrace } from '@volition/core';
-import { deserializeEnvelope, type KnownEnvelope } from '@volition/protocol';
+import type { AgentRuntimeSnapshot, DecisionTrace } from '@willform/core';
+import { deserializeEnvelope, type KnownEnvelope } from '@willform/protocol';
 
 export type ConnectionState = 'offline' | 'connecting' | 'connected' | 'error';
 
@@ -43,7 +43,7 @@ export function validateLiveEndpoint(endpoint: string, pageProtocol: string): En
     return { valid: false, message: 'Endpoint must be a valid ws:// or wss:// URL.' };
   }
   if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
-    return { valid: false, message: 'Volition 0.1 Web transport accepts only ws:// or wss:// endpoints.' };
+    return { valid: false, message: 'Willform 0.1 Web transport accepts only ws:// or wss:// endpoints.' };
   }
   if (pageProtocol === 'https:' && url.protocol === 'ws:') {
     return {

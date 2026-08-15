@@ -1,4 +1,4 @@
-# Volition Protocol
+# Willform Protocol
 
 Protocol 0.1 定义 Workbench 真正需要的 transport-neutral 消息语义：handshake、capability negotiation、agent inventory、runtime snapshot、trace batch、validation result。
 

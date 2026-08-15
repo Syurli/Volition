@@ -10,8 +10,8 @@ import {
   type PortableValue,
   type Stimulus,
   type Vector3,
-} from '@volition/core';
-import { VOLITION_CONFIG_VERSION, type AgentDefinition, type VolitionProjectConfig } from '@volition/schema';
+} from '@willform/core';
+import { WILLFORM_CONFIG_VERSION, type AgentDefinition, type WillformProjectConfig } from '@willform/schema';
 
 export * from './doctrine';
 
@@ -53,8 +53,8 @@ function rifleAgent(id: string, displayName: string, debugColorKey: string): Age
   };
 }
 
-export const tacticalWizardProjectConfig: VolitionProjectConfig = {
-  version: VOLITION_CONFIG_VERSION,
+export const tacticalWizardProjectConfig: WillformProjectConfig = {
+  version: WILLFORM_CONFIG_VERSION,
   projectId: 'tactical-wizard-reference',
   displayName: 'Tactical Wizard — Rifle Squad',
   behaviors: [
@@ -103,7 +103,7 @@ export const tacticalWizardProjectConfig: VolitionProjectConfig = {
 };
 
 export interface TacticalWizardFixtureRun {
-  readonly config: VolitionProjectConfig;
+  readonly config: WillformProjectConfig;
   readonly snapshots: readonly ReturnType<AgentRuntime['getSnapshot']>[];
   readonly traces: ReturnType<AgentRuntime['getTrace']>;
   readonly selectedIntents: readonly string[];
@@ -181,7 +181,7 @@ const actionPlanner: ActionPlanner = (input) => {
     case 'investigate':
     case 'search': return input.selectedIntent.targetPosition === undefined ? [{ kind: 'idle', intentId: input.selectedIntent.id }] : [{ kind: 'move_to', targetPosition: input.selectedIntent.targetPosition, intentId: input.selectedIntent.id }];
     case 'engage': {
-      const engagementPosition = asVector3(input.context.values.engagementPosition); const actions: Omit<import('@volition/core').ActionIntent, 'id'>[] = [];
+      const engagementPosition = asVector3(input.context.values.engagementPosition); const actions: Omit<import('@willform/core').ActionIntent, 'id'>[] = [];
       if (engagementPosition !== null) actions.push({ kind: 'move_to', targetPosition: engagementPosition, intentId: 'engage' });
       if (input.selectedIntent.targetId !== undefined) { actions.push({ kind: 'aim_at', targetId: input.selectedIntent.targetId, intentId: 'engage' }); actions.push({ kind: 'fire', targetId: input.selectedIntent.targetId, intentId: 'engage' }); }
       return actions.length === 0 ? [{ kind: 'idle', intentId: 'engage' }] : actions;

@@ -1,19 +1,19 @@
 # AGENTS.md
 
-本文件定义 AI 编码代理（Codex、ChatGPT 或其他自动化开发代理）在 **Volition** 仓库中的默认工作约束。
+本文件定义 AI 编码代理（Codex、ChatGPT 或其他自动化开发代理）在 **Willform** 仓库中的默认工作约束。
 
 ## 1. Project Identity
 
-- 产品名：**能动 Volition**
+- 产品名：**能动 Willform**
 - 定位：**Agent Decision & Behavior Framework**
 - 厂牌：**A BAIGE Project**
 - 当前阶段：**platform reset / pre-alpha**
 
-Volition 是新项目。除非任务明确要求，否则不要迁移、复制、兼容或复刻 UDMBF 1.0 的 API、类名、文件布局和历史实现。
+Willform 是新项目。除非任务明确要求，否则不要迁移、复制、兼容或复刻 UDMBF 1.0 的 API、类名、文件布局和历史实现。
 
 ## 2. Repository Is Not An Engine Plugin
 
-仓库根目录代表完整 Volition 平台，而不是 Unreal、Unity、Godot 中任意一个插件。
+仓库根目录代表完整 Willform 平台，而不是 Unreal、Unity、Godot 中任意一个插件。
 
 顶层职责：
 
@@ -39,7 +39,7 @@ Bridges/*        -> 宿主引擎/运行环境适配
 - 打开/启动 Workbench；
 - 宿主引擎必须提供的选择器或绑定界面。
 
-不要在多个引擎插件里重复实现一套完整 Volition 编辑器。
+不要在多个引擎插件里重复实现一套完整 Willform 编辑器。
 
 ## 4. Engine Bridge Policy
 
@@ -85,7 +85,7 @@ Workbench 是主要开发工具，但不是 shipping runtime 的强依赖。
 
 ## 8. StateTree And Other Engine Systems
 
-StateTree 可以是 Unreal Bridge 的重要 Behavior Execution backend，但 **Volition ≠ StateTree Framework**。
+StateTree 可以是 Unreal Bridge 的重要 Behavior Execution backend，但 **Willform ≠ StateTree Framework**。
 
 同理，Unity Behavior Tree、Godot Node/Resource 或 Web 端任意库都只能作为 Bridge/Adapter 实现，不得成为跨引擎 Core 的定义来源。
 
@@ -93,9 +93,9 @@ StateTree 可以是 Unreal Bridge 的重要 Behavior Execution backend，但 **V
 
 统一使用：
 
-- `Volition`：产品和共享概念；
-- `Volition Workbench`：浏览器工具；
-- `Volition Unreal Bridge` / `Unity Bridge` / `Godot Bridge` / `Web Bridge`：宿主适配。
+- `Willform`：产品和共享概念；
+- `Willform Workbench`：浏览器工具；
+- `Willform Unreal Bridge` / `Unity Bridge` / `Godot Bridge` / `Web Bridge`：宿主适配。
 
 禁止新增 `UDMBF2`、`UDMBFNext` 等旧品牌过渡命名。
 

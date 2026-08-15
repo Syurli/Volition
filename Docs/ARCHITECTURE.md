@@ -1,4 +1,4 @@
-# Volition Architecture
+# Willform Architecture
 
 > Status: Platform architecture contract v0.2. 本文定义边界，不冻结具体实现语言。
 
@@ -30,7 +30,7 @@
 
 ## 2. Two Planes
 
-Volition 明确区分两个平面。
+Willform 明确区分两个平面。
 
 ### Authoring & Debug Plane
 
@@ -95,11 +95,11 @@ Protocol 与传输实现解耦。WebSocket 可以是首版默认 transport，但
 
 ## 4. Bridge Contract
 
-每个 Bridge 负责把 Volition 产品概念映射到宿主环境。
+每个 Bridge 负责把 Willform 产品概念映射到宿主环境。
 
 允许职责：
 
-- Host object ↔ Volition Agent ID；
+- Host object ↔ Willform Agent ID；
 - Context provider；
 - Behavior execution adapter；
 - host asset/reference resolver；
@@ -122,11 +122,11 @@ Unreal 是首个生产验证环境，但位于 `Bridges/Unreal`，不是仓库�
 初始模块建议：
 
 ```text
-VolitionUnrealBridge   # Runtime bridge / host adaptation / transport
-VolitionUnrealEditor   # Settings / sync / connection / launch Workbench
+WillformUnrealBridge   # Runtime bridge / host adaptation / transport
+WillformUnrealEditor   # Settings / sync / connection / launch Workbench
 ```
 
-StateTree 可以作为 Behavior Execution backend，通过 Unreal Bridge adapter 接入。它不是 Volition Core 的定义来源。
+StateTree 可以作为 Behavior Execution backend，通过 Unreal Bridge adapter 接入。它不是 Willform Core 的定义来源。
 
 ## 6. Unity / Godot / Web Bridges
 

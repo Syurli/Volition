@@ -1,5 +1,5 @@
 ---
-task_id: VOLITION-TASK-UNCLAIMED-20260811-001
+task_id: WILLFORM-TASK-UNCLAIMED-20260811-001
 title: 战术巫师首个参考应用与 GitHub Pages Workbench 垂直切片
 recommended_owner: codex
 eligible_owners: [codex]
@@ -21,18 +21,18 @@ reference_host: web
 
 > 状态：`completed` / `codex`  
 > 实现分支：`codex/tactical-wizard-reference-slice-001`  
-> Draft PR：`Syurli/Volition#1`  
+> Draft PR：`Syurli/Willform#1`  
 > CI：TypeScript typecheck、5 个 test files / 15 tests、Workbench production build、reference package packing 均通过  
 > Pages：deployment workflow 已实现；截至 2026-08-11 仓库 Pages API 返回 404，仓库设置尚未启用，因此不声称已上线  
 > TWR 双仓联调：已产出 `npm run pack:reference`；AI-HOST-2 仍受 TWR 独立任务的用户批准 `I-Combat` Gate 约束，本任务未越权修改 TWR  
-> 产品：**能动 Volition — Agent Decision & Behavior Framework**  
+> 产品：**能动 Willform — Agent Decision & Behavior Framework**  
 > 首个真实 Reference Application：`Syurli/TWR_Dev` / 《战术巫师：裂隙突围》  
 > 首个 Reference Host：Web  
 > 第二生产验证 Host：Unreal（后续，不在本任务实现）
 
 ## 1. 任务背景
 
-Volition 当前已经完成平台级目录与职责边界：
+Willform 当前已经完成平台级目录与职责边界：
 
 ```text
 Apps/Workbench
@@ -49,14 +49,14 @@ Tests
 
 但真正的 portable runtime、Schema、Protocol、Web Bridge 和 Workbench 仍未正式落地。
 
-《战术巫师》当前恰好已有可运行的训练态 AI、视觉/声音感知、导航、武器和小队警戒，因此本任务使用它作为 Volition 的第一个真实需求方与压力测试，而不是继续以假想 Demo 设计框架。
+《战术巫师》当前恰好已有可运行的训练态 AI、视觉/声音感知、导航、武器和小队警戒，因此本任务使用它作为 Willform 的第一个真实需求方与压力测试，而不是继续以假想 Demo 设计框架。
 
 核心开发方式：
 
 ```text
 Tactical Wizard 提供真实需求与 Host 事实
         ↓
-Volition 抽象可移植 Agent 语义
+Willform 抽象可移植 Agent 语义
         ↓
 Web Reference Host / Fixture 验证
         ↓
@@ -71,10 +71,10 @@ Workbench 调试与解释
 
 ```text
 Docs/ai/tasks/todo/
-TASK-UNCLAIMED-20260811-009_能动Volition首个游戏端参考接入_AIHost边界与Legacy基线.md
+TASK-UNCLAIMED-20260811-009_能动Willform首个游戏端参考接入_AIHost边界与Legacy基线.md
 ```
 
-两边任务必须保持边界：**Volition 不实现 TWR 世界与战斗；TWR 不再实现新的正式 Agent cognition/decision framework。**
+两边任务必须保持边界：**Willform 不实现 TWR 世界与战斗；TWR 不再实现新的正式 Agent cognition/decision framework。**
 
 ## 2. 本任务必须先冻结的产品决策
 
@@ -91,13 +91,13 @@ Additional Validation: Unity / Godot
 含义：
 
 - Web/TWR 用于最快验证 Core、Schema、Protocol、Workbench 和 Agent runtime；
-- Unreal 仍是首个重要生产 Bridge，但职责变为证明 Volition 不是 TypeScript/Web 专用框架；
+- Unreal 仍是首个重要生产 Bridge，但职责变为证明 Willform 不是 TypeScript/Web 专用框架；
 - 不删除现有 Unreal Bridge 空壳；
-- 不让 TWR 的代码结构反向成为 Volition Core 的定义来源。
+- 不让 TWR 的代码结构反向成为 Willform Core 的定义来源。
 
 该决策必须记录到 `Docs/DECISIONS.md`，并同步 `Docs/ROADMAP.md`。
 
-### 2.2 Volition Workbench 就是 GitHub Pages 发布网页
+### 2.2 Willform Workbench 就是 GitHub Pages 发布网页
 
 这是本任务的**硬约束**。
 
@@ -116,10 +116,10 @@ GitHub Pages
     ↓
 Apps/Workbench production build
     ↓
-Volition Workbench 本体
+Willform Workbench 本体
 ```
 
-也就是说，用户打开 Volition 的 GitHub Pages 后看到的就是正式发布版 Workbench：
+也就是说，用户打开 Willform 的 GitHub Pages 后看到的就是正式发布版 Workbench：
 
 - 产品首页/项目入口只是 Workbench Shell 的一部分；
 - 可以进入 Demo、打开 portable config、检查 Agent、查看 Trace；
@@ -173,7 +173,7 @@ GitHub Pages 生产站点通过 HTTPS 提供服务。浏览器可能阻止从 HT
 
 **Pages 是正式 Workbench，并不等于本任务必须解决所有未来本地安全传输问题。**
 
-## 4. Volition 与 Tactical Wizard 的边界
+## 4. Willform 与 Tactical Wizard 的边界
 
 ### Tactical Wizard Host 拥有
 
@@ -189,7 +189,7 @@ combat execution
 ActionResult
 ```
 
-### Volition 拥有
+### Willform 拥有
 
 ```text
 Agent lifecycle
@@ -227,11 +227,11 @@ Squad / Director
 TWR-specific 内容只能存在于：
 
 - TWR 仓库自己的 integration adapter；
-- Volition 的示例 fixture / 文档中以普通 portable data 表达。
+- Willform 的示例 fixture / 文档中以普通 portable data 表达。
 
 ## 5. 首版技术栈决策范围
 
-Volition 当前尚未冻结 Core 实现语言和仓库构建栈。本任务需要为了第一个可运行 Slice 做一次**参考实现选择**，但不能把它误写成所有未来 Bridge 的永久语言约束。
+Willform 当前尚未冻结 Core 实现语言和仓库构建栈。本任务需要为了第一个可运行 Slice 做一次**参考实现选择**，但不能把它误写成所有未来 Bridge 的永久语言约束。
 
 推荐首版：
 
@@ -379,7 +379,7 @@ Reload
 
 ## 7. 确定性要求
 
-Volition 的首版 runtime 必须从第一天保证：
+Willform 的首版 runtime 必须从第一天保证：
 
 ```text
 same config
@@ -414,7 +414,7 @@ Date.now()
 
 ## 8. Scheduler / Resource 本轮收缩
 
-Volition 的长期产品仍然需要：
+Willform 的长期产品仍然需要：
 
 ```text
 Scheduler
@@ -439,7 +439,7 @@ Acquire / Release / Cancellation
 
 `Packages/Schema` 首版至少需要版本化：
 
-- Volition project/config version；
+- Willform project/config version；
 - Agent definition；
 - Context/Stimulus type references；
 - Decision policy reference/config；
@@ -453,7 +453,7 @@ Acquire / Release / Cancellation
 - Schema 与 runtime model 有自动一致性验证；
 - 未知字段/版本策略明确；
 - 不保存 TWR 绝对磁盘路径；
-- 不把 TWR weapon JSON 复制进 Volition agent definition；
+- 不把 TWR weapon JSON 复制进 Willform agent definition；
 - Agent 只引用 host capability/behavior identity。
 
 ## 10. Protocol
@@ -496,7 +496,7 @@ validation result
 - Protocol transport endpoint adapter；
 - dispose/reset。
 
-TWR-specific 字段必须在 Host 侧被转换为通用 Volition 数据。
+TWR-specific 字段必须在 Host 侧被转换为通用 Willform 数据。
 
 如果需要示例，使用：
 
@@ -543,7 +543,7 @@ Return Patrol
 
 ### 第一阶段不要求完整 Squad
 
-现有 TWR `SquadAiCoordinator` 继续作为 Golden Reference。Volition 首任务只需：
+现有 TWR `SquadAiCoordinator` 继续作为 Golden Reference。Willform 首任务只需：
 
 - 给 `squad_report / ally_report` 留可版本化信息输入；
 - 不建立共享真实世界黑板；
@@ -579,10 +579,10 @@ Trace 必须是 portable/runtime 数据，不由 Workbench 临时反推。
 
 ### 14.1 首页就是工具
 
-访问 GitHub Pages 根地址后，首先看到 Volition Workbench Shell，例如：
+访问 GitHub Pages 根地址后，首先看到 Willform Workbench Shell，例如：
 
 ```text
-Volition Workbench
+Willform Workbench
 ├─ Open portable config
 ├─ Open bundled Tactical Wizard demo
 ├─ Connect runtime
@@ -730,7 +730,7 @@ Tests/
 限制：
 
 - 不要求 TWR 提交本机 `file:C:/...` 依赖；
-- 不复制 Volition 源码进 TWR；
+- 不复制 Willform 源码进 TWR；
 - 不把 GitHub Pages/CDN 当 shipping runtime；
 - 不自动决定最终 npm registry / GitHub Packages / binary/WASM 分发策略；
 - 正式长期分发方案作为后续 packaging ADR。
@@ -760,7 +760,7 @@ CHANGELOG.md
 必须记录两条架构决策：
 
 1. Tactical Wizard / Web 成为 Reference Application/Host #1，Unreal 为第二跨引擎生产验证；
-2. `Apps/Workbench` production build 本身就是 Volition GitHub Pages 发布站点，不建立功能重复的独立官网。
+2. `Apps/Workbench` production build 本身就是 Willform GitHub Pages 发布站点，不建立功能重复的独立官网。
 
 ## 19. 验收标准
 
@@ -793,7 +793,7 @@ CHANGELOG.md
 
 14. 固定 fixture 可稳定运行 Patrol → Investigate → Engage → Search → Patrol。
 15. 失去视觉后只使用 Memory，不继续消费目标真实实时坐标。
-16. Noise stimulus 能触发调查，但 Volition 不拥有 TWR 音频播放系统。
+16. Noise stimulus 能触发调查，但 Willform 不拥有 TWR 音频播放系统。
 17. Aim/Fire/Reload 只产生 Host action，不自行实现 TWR 武器规则。
 
 ### Workbench / Pages
@@ -851,14 +851,14 @@ Tests/README.md
 并重新核对 `Syurli/TWR_Dev` 中：
 
 ```text
-Docs/ai/tasks/todo/TASK-UNCLAIMED-20260811-009_能动Volition首个游戏端参考接入_AIHost边界与Legacy基线.md
+Docs/ai/tasks/todo/TASK-UNCLAIMED-20260811-009_能动Willform首个游戏端参考接入_AIHost边界与Legacy基线.md
 src/simulation/combat/EnemyAiController.ts
 src/simulation/combat/SquadAiCoordinator.ts
 src/simulation/perception/CombatNoise.ts
 src/simulation/perception/CombatPerception.ts
 ```
 
-TWR 只作为需求/Fixture 来源。不得通过复制其实现来缩短 Volition 开发。
+TWR 只作为需求/Fixture 来源。不得通过复制其实现来缩短 Willform 开发。
 
 ## 22. 任务执行顺序
 
@@ -913,7 +913,7 @@ TWR 只作为需求/Fixture 来源。不得通过复制其实现来缩短 Voliti
 
 - 产出可消费的本地 build/pack；
 - 与 TWR AI-HOST-2 进入用户批准的联调窗口；
-- 不在 Volition 仓库直接修改 TWR 文件。
+- 不在 Willform 仓库直接修改 TWR 文件。
 
 ## 23. Definition of Done
 

@@ -1,11 +1,11 @@
 {
-  "name": "@volition/example-tactical-wizard",
+  "name": "@willform/example-tactical-wizard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@volition/core": "0.1.0",
-    "@volition/schema": "0.1.0"
+    "@willform/core": "0.1.0",
+    "@willform/schema": "0.1.0"
   }
 }

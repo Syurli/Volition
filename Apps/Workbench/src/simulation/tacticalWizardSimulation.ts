@@ -19,7 +19,7 @@ export type {
   TacticalTask,
 } from './tacticalWizardHost';
 
-declare const __VOLITION_COMMIT__: string;
+declare const __WILLFORM_COMMIT__: string;
 
 type ThreatEvidenceKind = 'gunshot' | 'bullet_impact' | 'near_miss' | 'hit';
 type ThreatEvidenceCounts = Record<ThreatEvidenceKind, number>;
@@ -1111,7 +1111,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
 
   private logSemanticRuntime(action: 'enabled' | 'reset'): void {
     const identity = runtimeIdentity();
-    this.behaviorHost().log('system', 'simulation', 'Volition Simulation', 'session', `Fixed-hierarchy behavior parity runtime ${action}.`, {
+    this.behaviorHost().log('system', 'simulation', 'Willform Simulation', 'session', `Fixed-hierarchy behavior parity runtime ${action}.`, {
       runtimeCommit: identity.commit,
       runtimeEntrypoint: identity.entrypoint,
       architecture: identity.architecture,
@@ -1139,7 +1139,7 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
 
 function runtimeIdentity(): RuntimeIdentityView {
   return {
-    commit: typeof __VOLITION_COMMIT__ === 'string' ? __VOLITION_COMMIT__ : 'unknown',
+    commit: typeof __WILLFORM_COMMIT__ === 'string' ? __WILLFORM_COMMIT__ : 'unknown',
     entrypoint: 'TacticalWizardSimulation',
     architecture: 'fixed_tactical_hierarchy',
     behaviorProfile: 'active_attention_recovery',

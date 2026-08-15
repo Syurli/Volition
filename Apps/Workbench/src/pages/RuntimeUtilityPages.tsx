@@ -1,4 +1,4 @@
-import type { DecisionTrace } from '@volition/core';
+import type { DecisionTrace } from '@willform/core';
 import type { ConnectionState, LiveTelemetryState } from '../connection';
 import type { Locale, MessageKey, Translate } from '../i18n';
 import { localizedAssetName, localizedIntent, localizedRole, localizedTactic } from '../assetLocalization';

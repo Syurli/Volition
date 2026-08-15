@@ -1,12 +1,12 @@
-import { tacticalWizardProjectConfig } from '@volition/example-tactical-wizard';
-import type { BehaviorDefinition, VolitionProjectConfig } from '@volition/schema';
+import { tacticalWizardProjectConfig } from '@willform/example-tactical-wizard';
+import type { BehaviorDefinition, WillformProjectConfig } from '@willform/schema';
 
 const extraTactics: readonly BehaviorDefinition[] = [
   { id: 'tactic:crossfire', displayName: 'Establish Crossfire', scope: 'squad', hostBehaviorRef: 'reference.squad.crossfire', description: 'Two maneuver elements establish opposing firing sectors before an assault.', requiredCapabilities: [] },
   { id: 'tactic:sweep', displayName: 'Sector Sweep', scope: 'squad', hostBehaviorRef: 'reference.squad.sweep', description: 'After visual loss, search separated sectors around the Last Known Position without reading hidden live coordinates.', requiredCapabilities: [] },
 ];
 
-export const tacticalWizardWorkbenchConfig: VolitionProjectConfig = (() => {
+export const tacticalWizardWorkbenchConfig: WillformProjectConfig = (() => {
   const base = structuredClone(tacticalWizardProjectConfig);
   const behaviors = [...(base.behaviors ?? [])];
   for (const tactic of extraTactics) if (!behaviors.some((entry) => entry.id === tactic.id)) behaviors.push(tactic);

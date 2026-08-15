@@ -413,7 +413,7 @@ export class TacticalWizardRuntime {
     this.initializeEquipment();
     this.installHostExecutionBoundary();
     this.commanderLastPosition = this.hostState().agents.find((agent) => agent.id === NOMINAL_COMMANDER_ID)?.position ?? null;
-    this.hostAccess().log('system', 'simulation', 'Volition Simulation', 'session', 'Fixed tactical hierarchy runtime enabled.', {
+    this.hostAccess().log('system', 'simulation', 'Willform Simulation', 'session', 'Fixed tactical hierarchy runtime enabled.', {
       architecture: 'fixed_tactical_hierarchy',
       layers: LAYERS.join('>'),
       versionOverlayPolicy: 'forbidden',
@@ -469,7 +469,7 @@ export class TacticalWizardRuntime {
     this.tacticalHost.reset();
     this.initializeEquipment();
     this.commanderLastPosition = this.hostState().agents.find((agent) => agent.id === NOMINAL_COMMANDER_ID)?.position ?? null;
-    this.hostAccess().log('system', 'simulation', 'Volition Simulation', 'session', 'Fixed tactical hierarchy runtime reset.', {
+    this.hostAccess().log('system', 'simulation', 'Willform Simulation', 'session', 'Fixed tactical hierarchy runtime reset.', {
       architecture: 'fixed_tactical_hierarchy',
       versionOverlayPolicy: 'forbidden',
     });

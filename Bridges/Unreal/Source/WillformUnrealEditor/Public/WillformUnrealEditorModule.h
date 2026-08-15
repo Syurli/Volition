@@ -2,7 +2,7 @@
 
 #include "Modules/ModuleManager.h"
 
-class FVolitionUnrealEditorModule final : public IModuleInterface
+class FWillformUnrealEditorModule final : public IModuleInterface
 {
 public:
     virtual void StartupModule() override;

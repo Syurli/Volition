@@ -81,7 +81,7 @@ The intended lesson is not to copy a particular F.E.A.R. behavior tree or encoun
 - the system replans instead of replaying choreography;
 - communication and visible role changes make the intelligence legible to the player.
 
-For Volition this means preferring `role handoff + plan rebuild` over special-case scripted sequences.
+For Willform this means preferring `role handoff + plan rebuild` over special-case scripted sequences.
 
 ## Diagnostics
 
@@ -123,7 +123,7 @@ The Workbench test suite now requires:
 
 Everything in this revision remains Simulation Host / reference-application behavior.
 
-Volition Portable Core still does **not** own:
+Willform Portable Core still does **not** own:
 
 - map geometry;
 - A* / NavMesh;

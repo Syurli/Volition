@@ -1,5 +1,5 @@
-import type { AgentRuntimeSnapshot, DecisionTrace } from '@volition/core';
-import type { SquadTactic } from '@volition/example-tactical-wizard';
+import type { AgentRuntimeSnapshot, DecisionTrace } from '@willform/core';
+import type { SquadTactic } from '@willform/example-tactical-wizard';
 import type { GridPoint } from './navigation';
 import type { CoverSlot } from './squadTactics';
 

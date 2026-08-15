@@ -20,7 +20,7 @@ V5 separates:
 
 ### F.E.A.R. / Jeff Orkin
 
-The F.E.A.R. AI presentations and papers describe squad behaviors as slots/orders that are filled by individual agents and monitored for completion. Examples include one member suppressing while others seek cover or advance, reserving distinct cover positions, and dividing search work while elements cover each other. The important lesson for Volition is not to copy a fixed sequence of cinematic tactics; it is to make small tactical jobs explicit and let useful-looking coordination emerge from valid spatial choices plus task ownership.
+The F.E.A.R. AI presentations and papers describe squad behaviors as slots/orders that are filled by individual agents and monitored for completion. Examples include one member suppressing while others seek cover or advance, reserving distinct cover positions, and dividing search work while elements cover each other. The important lesson for Willform is not to copy a fixed sequence of cinematic tactics; it is to make small tactical jobs explicit and let useful-looking coordination emerge from valid spatial choices plus task ownership.
 
 V5 adaptations:
 

@@ -3,7 +3,7 @@ import type { DecisionCandidate, DecisionInput, DecisionPolicy, DecisionResult }
 export type UtilityCandidateFactory = (input: DecisionInput) => readonly DecisionCandidate[];
 
 /**
- * Deterministic utility selector. Utility is one pluggable policy implementation, not Volition product semantics.
+ * Deterministic utility selector. Utility is one pluggable policy implementation, not Willform product semantics.
  */
 export class UtilityDecisionPolicy implements DecisionPolicy {
   public readonly id: string;

@@ -1,4 +1,4 @@
-# Volition Initial Roadmap
+# Willform Initial Roadmap
 
 > 初始化阶段的里程碑地图，不是发布日期承诺。
 
@@ -22,7 +22,7 @@ Reference Application #1 是 `Syurli/TWR_Dev` / 《战术巫师：裂隙突围�
 
 目标：让仓库形态与产品真实边界一致。
 
-- [x] 确认产品命名：能动 Volition
+- [x] 确认产品命名：能动 Willform
 - [x] 确认厂牌：A BAIGE Project
 - [x] 仓库从 Unreal 插件结构重构为平台 monorepo
 - [x] 独立 `Apps/Workbench`
@@ -62,25 +62,25 @@ Patrol → Hear/Perceive → Investigate → Visual Confirm → Engage
 
 ## Phase 2 — Tactical Wizard Game-side Integration
 
-目标：在 TWR 仓库的独立 integration boundary 中消费 Volition contracts，不让 Volition 接管宿主世界与战斗规则。
+目标：在 TWR 仓库的独立 integration boundary 中消费 Willform contracts，不让 Willform 接管宿主世界与战斗规则。
 
-- TWR stable actor id ↔ Volition Agent id
+- TWR stable actor id ↔ Willform Agent id
 - Host Context / Stimulus adapter
 - Host Action executor：MoveTo / AimAt / Fire / Reload
 - telemetry sanitizer
 - Legacy Golden Reference 对照
-- 单个普通持枪敌人的 `legacy | volition` 开发态切换
+- 单个普通持枪敌人的 `legacy | willform` 开发态切换
 
 **Gate**：进入 TWR 的 `I-Combat` 串行集成窗口前必须由用户批准，并避开其它正在修改 combat/Raid 共享面的任务。
 
 ## Phase 3 — Unreal Production Validation #2
 
-目标：证明 Volition contracts/runtime 不是 TypeScript/Web 专用实现。
+目标：证明 Willform contracts/runtime 不是 TypeScript/Web 专用实现。
 
-- `VolitionUnrealBridge` host registration / context / config / telemetry
+- `WillformUnrealBridge` host registration / context / config / telemetry
 - C++ 侧 contract/runtime strategy
 - 一个最小 Behavior execution adapter
-- StateTree 可作为 execution backend，但不定义 Volition Core
+- StateTree 可作为 execution backend，但不定义 Willform Core
 - Workbench ↔ Unreal round trip
 
 **Exit Criteria**：同一 portable semantics 可以由 Unreal/C++ Host 解释与执行，不依赖 TypeScript runtime。

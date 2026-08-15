@@ -1,4 +1,4 @@
-import type { VolitionProjectConfig } from '@volition/schema';
+import type { WillformProjectConfig } from '@willform/schema';
 import { tacticalWizardWorkbenchConfig } from './referenceProjectConfig';
 
 export interface WorkbenchProject {
@@ -8,7 +8,7 @@ export interface WorkbenchProject {
   readonly nameZh?: string;
   readonly description: string;
   readonly kind: 'built-in' | 'local';
-  readonly config: VolitionProjectConfig;
+  readonly config: WillformProjectConfig;
   readonly defaultMapId: string;
 }
 
@@ -23,7 +23,7 @@ export const tacticalWizardExampleProject: WorkbenchProject = {
   defaultMapId: 'tactical-wizard-training-yard',
 };
 
-const STORAGE_KEY = 'volition.workbench.projects.v1';
+const STORAGE_KEY = 'willform.workbench.projects.v1';
 
 export function loadLocalProjects(): readonly WorkbenchProject[] {
   if (typeof window === 'undefined') return [];
@@ -59,7 +59,7 @@ export function createBlankProject(name: string): WorkbenchProject {
     id: `local:${slug(name)}:${Date.now().toString(36)}`,
     name,
     nameZh: undefined,
-    description: 'Local Volition AI project.',
+    description: 'Local Willform AI project.',
     kind: 'local',
     config: {
       ...base.config,
@@ -71,7 +71,7 @@ export function createBlankProject(name: string): WorkbenchProject {
 
 export function parseWorkbenchProject(text: string): WorkbenchProject {
   const parsed = JSON.parse(text) as unknown;
-  if (!isWorkbenchProject(parsed)) throw new Error('Unsupported Volition Workbench project file.');
+  if (!isWorkbenchProject(parsed)) throw new Error('Unsupported Willform Workbench project file.');
   return { ...parsed, kind: 'local' };
 }
 
@@ -92,5 +92,5 @@ function isWorkbenchProject(value: unknown): value is WorkbenchProject {
 }
 
 function slug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '') || 'volition-project';
+  return value.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '') || 'willform-project';
 }

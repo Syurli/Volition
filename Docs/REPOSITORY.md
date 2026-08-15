@@ -1,6 +1,6 @@
 # Repository Layout
 
-Volition 使用平台型 monorepo，而不是以任一游戏引擎插件作为仓库根结构。
+Willform 使用平台型 monorepo，而不是以任一游戏引擎插件作为仓库根结构。
 
 ```text
 Apps/Workbench

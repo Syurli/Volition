@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { validateProjectConfig } from '@volition/schema';
-import { tacticalWizardProjectConfig } from '@volition/example-tactical-wizard';
+import { validateProjectConfig } from '@willform/schema';
+import { tacticalWizardProjectConfig } from '@willform/example-tactical-wizard';
 
 describe('Schema 0.1 typed authoring assets', () => {
   it('accepts the Tactical Wizard reference with squads, behaviors, supervisors and reasoners', () => {

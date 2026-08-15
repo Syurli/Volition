@@ -2,7 +2,7 @@
 
 #include "Modules/ModuleManager.h"
 
-class FVolitionUnrealBridgeModule final : public IModuleInterface
+class FWillformUnrealBridgeModule final : public IModuleInterface
 {
 public:
     virtual void StartupModule() override;
