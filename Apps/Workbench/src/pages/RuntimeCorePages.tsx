@@ -23,10 +23,20 @@ interface SimulationProps {
 
 export function SimulationPage(props: SimulationProps) {
   const { simulation, locale } = props;
+  const L = (zh: string, en: string) => locale === 'zh-CN' ? zh : en;
+  const living = simulation.agents.filter((agent) => agent.alive).length;
   return <div className="simulation-workspace-shell">
-    <PlayerCombatPanel simulation={simulation} locale={locale} />
-    <CommandEquipmentPanel simulation={simulation} locale={locale} />
     <BaseSimulationPage {...props} />
+    <details className="simulation-secondary-details simulation-runtime-details">
+      <summary>
+        <span>{L('战斗输入与小队装备', 'Combat Input & Squad Equipment')}</span>
+        <small>{L('火力压力', 'Fire pressure')} {simulation.playerCombat.firePressure.toFixed(2)} · {L('存活', 'Living')} {living}/{simulation.agents.length} · {L('指挥', 'Command')} {shortActor(simulation.commanderId)}</small>
+      </summary>
+      <div className="simulation-secondary-grid simulation-secondary-grid-runtime">
+        <PlayerCombatPanel simulation={simulation} locale={locale} />
+        <CommandEquipmentPanel simulation={simulation} locale={locale} />
+      </div>
+    </details>
   </div>;
 }
 
@@ -97,7 +107,7 @@ function CommandEquipmentPanel({ simulation, locale, compact = false }: { readon
         {agent.logisticsTask !== 'none' ? <small className="logistics">↳ {localizeLogistics(agent.logisticsTask, locale)} · {agent.resupplyTargetId}</small> : null}
       </div>;
     })}</div>
-    {!compact && <div className="supply-summary">{L('V10：医疗包已进入士兵与补给箱资源模型。成员失能后先建立掩护，再由另一人接近并持续救治；恢复后重新加入原小队计划。移速不再固定：开火、横移/后退、血量、当前任务、闪避/烟幕后撤与救援都会实际改变运动帧预算。', 'V10: medkits are now resources carried by soldiers and field caches. A downed member triggers cover establishment before another soldier approaches and performs timed treatment; the recovered member then rejoins the squad plan. Movement speed is no longer fixed: firing, lateral/backward movement, health, task, reactions and rescue state all affect the real motion-frame budget.')}</div>}
+    {!compact && <div className="supply-summary">{L('医疗包已进入士兵与补给箱资源模型。成员失能后先建立掩护，再由另一人接近并持续救治；恢复后重新加入原小队计划。移速不再固定：开火、横移/后退、血量、当前任务、闪避/烟幕后撤与救援都会实际改变运动帧预算。', 'Medkits are resources carried by soldiers and field caches. A downed member triggers cover establishment before another soldier approaches and performs timed treatment; the recovered member then rejoins the squad plan. Movement speed is no longer fixed: firing, lateral/backward movement, health, task, reactions and rescue state all affect the real motion-frame budget.')}</div>}
   </section>;
 }
 
