@@ -88,6 +88,7 @@ describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
     expect(state.squad.alertState).toBe('active');
     expect(state.agents.some((agent) => agent.targetVisible)).toBe(true);
     const suppressedBefore = state.logisticsLifecycle.suppressedPlanningCalls;
+    const preemptionsBefore = state.combatAuthority.logisticsPreemptions;
 
     expect(simulation.setAgentEquipment('twr:rifle-squad:alpha', { ammoRounds: 12 })).toBe(true);
     for (let index = 0; index < 3; index += 1) simulation.step();
@@ -96,7 +97,7 @@ describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
     expect(['resupply_ammo', 'resupply_mixed']).toContain(state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')?.logisticsTask);
     expect(state.logisticsLifecycle.state).toBe('assigned');
     expect(state.logisticsLifecycle.suppressedPlanningCalls).toBe(suppressedBefore);
-    expect(state.combatAuthority.logisticsPreemptions).toBe(0);
+    expect(state.combatAuthority.logisticsPreemptions).toBe(preemptionsBefore);
   });
 
   it('still suppresses noncritical low-ammo resupply while confirmed direct combat owns execution', () => {
