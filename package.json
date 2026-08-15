@@ -1,5 +1,5 @@
 {
-  "name": "volition-platform",
+  "name": "willform-platform",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,11 +10,11 @@
     "Examples/*"
   ],
   "scripts": {
-    "dev": "npm -w @volition/workbench run dev",
+    "dev": "npm -w @willform/workbench run dev",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "npm run typecheck && npm run test && npm -w @volition/workbench run build",
+    "build": "npm run typecheck && npm run test && npm -w @willform/workbench run build",
     "pack:reference": "node Scripts/pack-reference.mjs"
   },
   "devDependencies": {

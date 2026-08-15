@@ -1,6 +1,6 @@
-# Contributing to Volition
+# Contributing to Willform
 
-感谢参与 **能动 Volition** 的开发。当前项目处于 pre-alpha，架构清晰度优先于兼容性和功能数量。
+感谢参与 **能动 Willform** 的开发。当前项目处于 pre-alpha，架构清晰度优先于兼容性和功能数量。
 
 ## Before You Start
 
@@ -30,14 +30,14 @@
 
 新增共享字段或协议消息时，应说明：
 
-1. 它是否为真正的 Volition 通用概念；
+1. 它是否为真正的 Willform 通用概念；
 2. Unreal / Unity / Godot / Web 如何理解该字段；
 3. 若仅某宿主需要，为什么不能放入 engine extension；
 4. 兼容性和版本影响。
 
 ## Compatibility
 
-Volition 不以 UDMBF 1.0 兼容为目标。任何迁移层必须由明确任务驱动。
+Willform 不以 UDMBF 1.0 兼容为目标。任何迁移层必须由明确任务驱动。
 
 ## License
 

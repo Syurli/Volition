@@ -2,8 +2,8 @@
   "FileVersion": 3,
   "Version": 20000,
   "VersionName": "2.0.0-dev",
-  "FriendlyName": "Volition Unreal Bridge",
-  "Description": "Unreal Engine bridge and project configuration integration for Volition. Primary authoring and debugging live in the browser-based Volition Workbench.",
+  "FriendlyName": "Willform Unreal Bridge",
+  "Description": "Unreal Engine bridge and project configuration integration for Willform. Primary authoring and debugging live in the browser-based Willform Workbench.",
   "Category": "Artificial Intelligence",
   "CreatedBy": "BAIGE",
   "EnabledByDefault": false,
@@ -12,12 +12,12 @@
   "Installed": false,
   "Modules": [
     {
-      "Name": "VolitionUnrealBridge",
+      "Name": "WillformUnrealBridge",
       "Type": "Runtime",
       "LoadingPhase": "Default"
     },
     {
-      "Name": "VolitionUnrealEditor",
+      "Name": "WillformUnrealEditor",
       "Type": "Editor",
       "LoadingPhase": "PostEngineInit"
     }

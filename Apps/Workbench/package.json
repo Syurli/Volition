@@ -1,5 +1,5 @@
 {
-  "name": "@volition/workbench",
+  "name": "@willform/workbench",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@volition/core": "0.1.0",
-    "@volition/schema": "0.1.0",
-    "@volition/protocol": "0.1.0",
-    "@volition/example-tactical-wizard": "0.1.0",
+    "@willform/core": "0.1.0",
+    "@willform/schema": "0.1.0",
+    "@willform/protocol": "0.1.0",
+    "@willform/example-tactical-wizard": "0.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

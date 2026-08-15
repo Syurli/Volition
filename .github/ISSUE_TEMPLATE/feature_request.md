@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Propose a focused Volition capability
+about: Propose a focused Willform capability
 title: "[Feature] "
 labels: "enhancement"
 assignees: ""

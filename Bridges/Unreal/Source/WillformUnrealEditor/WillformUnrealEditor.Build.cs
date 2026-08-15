@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class VolitionUnrealEditor : ModuleRules
+public class WillformUnrealEditor : ModuleRules
 {
-    public VolitionUnrealEditor(ReadOnlyTargetRules Target) : base(Target)
+    public WillformUnrealEditor(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -11,7 +11,7 @@ public class VolitionUnrealEditor : ModuleRules
             "Core",
             "Projects",
             "UnrealEd",
-            "VolitionUnrealBridge"
+            "WillformUnrealBridge"
         });
     }
 }

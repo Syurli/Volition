@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class VolitionUnrealBridge : ModuleRules
+public class WillformUnrealBridge : ModuleRules
 {
-    public VolitionUnrealBridge(ReadOnlyTargetRules Target) : base(Target)
+    public WillformUnrealBridge(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 

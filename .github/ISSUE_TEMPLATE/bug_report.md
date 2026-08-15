@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a reproducible Volition problem
+about: Report a reproducible Willform problem
 title: "[Bug] "
 labels: "bug"
 assignees: ""
@@ -11,7 +11,7 @@ assignees: ""
 ## Environment
 
 - Unreal Engine version:
-- Volition commit/version:
+- Willform commit/version:
 - Platform:
 
 ## Reproduction Steps

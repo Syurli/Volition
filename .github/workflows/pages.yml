@@ -1,4 +1,4 @@
-name: Deploy Volition Workbench to Pages
+name: Deploy Willform Workbench to Pages
 
 on:
   push:
@@ -28,8 +28,8 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Build and validate production Workbench
         env:
-          VOLITION_BASE_PATH: /Volition/
-          VOLITION_COMMIT_SHA: ${{ github.sha }}
+          WILLFORM_BASE_PATH: /Willform/
+          WILLFORM_COMMIT_SHA: ${{ github.sha }}
         run: npm run build
       - name: Upload Workbench artifact
         uses: actions/upload-pages-artifact@v3

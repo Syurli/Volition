@@ -1,10 +1,10 @@
-import type { PortableValue, Vector3 } from '@volition/core';
+import type { PortableValue, Vector3 } from '@willform/core';
 
 /**
  * Schema 0.1 remains explicitly experimental. The source format is allowed to grow while the first
  * vertical slices validate the semantics; stable binary/source compatibility is not promised yet.
  */
-export const VOLITION_CONFIG_VERSION = '0.1.0' as const;
+export const WILLFORM_CONFIG_VERSION = '0.1.0' as const;
 
 export interface MemoryConfig {
   readonly decayPerSecond: number;
@@ -90,8 +90,8 @@ export interface SquadDefinition {
   readonly extensions?: Readonly<Record<string, PortableValue>>;
 }
 
-export interface VolitionProjectConfig {
-  readonly version: typeof VOLITION_CONFIG_VERSION;
+export interface WillformProjectConfig {
+  readonly version: typeof WILLFORM_CONFIG_VERSION;
   readonly projectId: string;
   readonly displayName: string;
   readonly agents: readonly AgentDefinition[];
@@ -125,7 +125,7 @@ export function validateProjectConfig(input: unknown): ValidationResult {
   const issues: ValidationIssue[] = [];
   if (!isRecord(input)) return invalidRoot('Project config must be an object.');
   for (const key of Object.keys(input)) if (!PROJECT_KEYS.has(key)) issues.push({ severity: 'warning', path: key, message: 'Unknown project field is ignored by Schema 0.1.' });
-  if (input.version !== VOLITION_CONFIG_VERSION) issues.push({ severity: 'error', path: 'version', message: `Unsupported config version: ${String(input.version)}.` });
+  if (input.version !== WILLFORM_CONFIG_VERSION) issues.push({ severity: 'error', path: 'version', message: `Unsupported config version: ${String(input.version)}.` });
   requireString(input, 'projectId', issues); requireString(input, 'displayName', issues);
 
   const behaviorIds = validateBehaviors(input.behaviors, issues);
@@ -138,7 +138,7 @@ export function validateProjectConfig(input: unknown): ValidationResult {
   return { valid: issues.every((issue) => issue.severity !== 'error'), issues };
 }
 
-export function assertValidProjectConfig(input: unknown): asserts input is VolitionProjectConfig {
+export function assertValidProjectConfig(input: unknown): asserts input is WillformProjectConfig {
   const result = validateProjectConfig(input);
   if (!result.valid) throw new Error(result.issues.filter((issue) => issue.severity === 'error').map((issue) => `${issue.path}: ${issue.message}`).join('\n'));
 }

@@ -11,11 +11,11 @@
     "allowImportingTsExtensions": false,
     "baseUrl": ".",
     "paths": {
-      "@volition/core": ["Packages/Core/src/index.ts"],
-      "@volition/schema": ["Packages/Schema/src/index.ts"],
-      "@volition/protocol": ["Packages/Protocol/src/index.ts"],
-      "@volition/web-bridge": ["Bridges/Web/src/index.ts"],
-      "@volition/example-tactical-wizard": ["Examples/TacticalWizard/src/index.ts"]
+      "@willform/core": ["Packages/Core/src/index.ts"],
+      "@willform/schema": ["Packages/Schema/src/index.ts"],
+      "@willform/protocol": ["Packages/Protocol/src/index.ts"],
+      "@willform/web-bridge": ["Bridges/Web/src/index.ts"],
+      "@willform/example-tactical-wizard": ["Examples/TacticalWizard/src/index.ts"]
     }
   },
   "include": [

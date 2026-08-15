@@ -1,7 +1,7 @@
-import type { AgentRuntimeSnapshot, DecisionTrace } from '@volition/core';
-import type { ValidationResult } from '@volition/schema';
+import type { AgentRuntimeSnapshot, DecisionTrace } from '@willform/core';
+import type { ValidationResult } from '@willform/schema';
 
-export const VOLITION_PROTOCOL_VERSION = '0.1.0' as const;
+export const WILLFORM_PROTOCOL_VERSION = '0.1.0' as const;
 
 export type ProtocolMessageType =
   | 'handshake'
@@ -12,7 +12,7 @@ export type ProtocolMessageType =
   | 'validation_result';
 
 export interface ProtocolEnvelope<TType extends ProtocolMessageType = ProtocolMessageType, TPayload = unknown> {
-  readonly protocolVersion: typeof VOLITION_PROTOCOL_VERSION;
+  readonly protocolVersion: typeof WILLFORM_PROTOCOL_VERSION;
   readonly sequence: number;
   readonly type: TType;
   readonly payload: TPayload;
@@ -62,7 +62,7 @@ export function envelope<TType extends ProtocolMessageType, TPayload>(
   payload: TPayload,
   sequence: number,
 ): ProtocolEnvelope<TType, TPayload> {
-  return { protocolVersion: VOLITION_PROTOCOL_VERSION, sequence, type, payload };
+  return { protocolVersion: WILLFORM_PROTOCOL_VERSION, sequence, type, payload };
 }
 
 export function serializeEnvelope(value: KnownEnvelope): string {
@@ -72,7 +72,7 @@ export function serializeEnvelope(value: KnownEnvelope): string {
 export function deserializeEnvelope(serialized: string): KnownEnvelope {
   const value: unknown = JSON.parse(serialized);
   if (!isRecord(value)) throw new Error('Protocol envelope must be an object.');
-  if (value.protocolVersion !== VOLITION_PROTOCOL_VERSION) throw new Error(`Unsupported protocol version: ${String(value.protocolVersion)}.`);
+  if (value.protocolVersion !== WILLFORM_PROTOCOL_VERSION) throw new Error(`Unsupported protocol version: ${String(value.protocolVersion)}.`);
   if (typeof value.sequence !== 'number' || !Number.isInteger(value.sequence) || value.sequence < 0) {
     throw new Error('Protocol sequence must be a non-negative integer.');
   }
