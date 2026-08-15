@@ -52,6 +52,19 @@ describe('Tactical Wizard production architecture guardrails', () => {
     for (const file of retiredUiFiles) expect(existsSync(resolve(src, file)), file).toBe(false);
   });
 
+  it('loads semantic runtime layout styles and keeps the player marker visible in the world layer', () => {
+    const main = readFileSync(resolve(src, 'main.tsx'), 'utf8');
+    const runtimeCss = readFileSync(resolve(src, 'simulation-runtime.css'), 'utf8');
+    const worldCanvas = readFileSync(resolve(src, 'components/SimulationWorldCanvas.tsx'), 'utf8');
+    expect(main).toContain("import './simulation-runtime.css';");
+    expect(main).not.toMatch(/simulation-v\d+\.css/);
+    expect(existsSync(resolve(src, 'simulation-v10.css'))).toBe(false);
+    expect(runtimeCss).toContain('.simulation-workspace-shell .simulation-recovery-wrap');
+    expect(runtimeCss).toContain('.simulation-recovery-wrap{position:relative;line-height:0}');
+    expect(worldCanvas).toContain('className="sim-player"');
+    expect(worldCanvas).toContain('className="sim-player-core"');
+  });
+
   it('keeps one explicit responsibility order and one execution contract', () => {
     const runtime = readFileSync(resolve(simulationDir, 'tacticalWizardRuntime.ts'), 'utf8');
     const hierarchy = readFileSync(resolve(simulationDir, 'tacticalWizardHierarchy.ts'), 'utf8');
