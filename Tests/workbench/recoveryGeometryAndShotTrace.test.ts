@@ -72,4 +72,40 @@ describe('world-consistent fire and recovery geometry', () => {
     for (let index = 0; index < 3; index += 1) expect(simulation.playerFireAt({ x: 2, y: 2 })).toBe(true);
     expect(simulation.getState().recoverySafety.pressure).toBeLessThan(0.2);
   });
+
+  it('lets a solo rescuer keep casualty ownership and complete treatment after historical threat becomes stale', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setPlayerPosition({ x: 8, y: 2 })).toBe(true);
+    for (let index = 0; index < 10; index += 1) simulation.step();
+    expect(simulation.setPlayerPosition({ x: 59, y: 28 })).toBe(true);
+    for (let index = 0; index < 24; index += 1) simulation.step();
+
+    expect(simulation.setAgentVitals('twr:rifle-squad:alpha', { health: 0 })).toBe(true);
+    expect(simulation.setAgentVitals('twr:rifle-squad:bravo', { health: 0 })).toBe(true);
+
+    let state = simulation.getState();
+    expect(state.leadership.capability).toBe('single_survivor');
+    for (let index = 0; index < 220 && state.leadership.livingCount === 1; index += 1) {
+      simulation.step();
+      state = simulation.getState();
+    }
+
+    expect(state.leadership.livingCount).toBeGreaterThan(1);
+    expect(state.agents.some((agent) => agent.id !== 'twr:rifle-squad:charlie' && agent.health > 0)).toBe(true);
+    expect(state.recoverySafety.threatSource === 'none' || state.recoverySafety.threatAgeTicks === 0).toBe(true);
+  });
+
+  it('does not treat an absent solo security role as ineffective fire support', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setAgentVitals('twr:rifle-squad:alpha', { health: 0 })).toBe(true);
+    expect(simulation.setAgentVitals('twr:rifle-squad:bravo', { health: 0 })).toBe(true);
+    let state = simulation.getState();
+    for (let index = 0; index < 12; index += 1) { simulation.step(); state = simulation.getState(); }
+    expect(state.recoverySafety.mode === 'solo' || state.leadership.livingCount > 1).toBe(true);
+    if (state.recoverySafety.mode === 'solo') {
+      expect(state.recoverySafety.pauseReason).not.toBe('paired_security_ineffective');
+      expect(state.recoverySafety.security.agentId).toBeNull();
+    }
+  });
+
 });

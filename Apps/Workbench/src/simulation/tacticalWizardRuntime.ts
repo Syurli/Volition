@@ -152,7 +152,15 @@ export interface TacticalWizardSimulationState extends Omit<TacticalHostState, '
     readonly pressure: number;
     readonly safetyReplans: number;
     readonly safetyAborts: number;
+    readonly safetyDeferrals: number;
     readonly lastReplanReason: string | null;
+    readonly mode: 'none' | 'paired' | 'solo';
+    readonly pauseReason: string | null;
+    readonly threatSource: 'none' | 'visual' | 'recent_fire' | 'fresh_lkp';
+    readonly threatAgeTicks: number | null;
+    readonly watchdogState: 'idle' | 'active' | 'suspended_by_safety';
+    readonly distanceToTreatment: number | null;
+    readonly deferredUntilTick: number | null;
     readonly security: {
       readonly agentId: string | null;
       readonly weaponReady: boolean;
@@ -325,6 +333,12 @@ interface HostAccess {
   pushEvent: (message: string) => void;
 }
 
+interface RecoveryThreatFact {
+  readonly point: GridPoint | null;
+  readonly source: 'none' | 'visual' | 'recent_fire' | 'fresh_lkp';
+  readonly ageTicks: number | null;
+}
+
 interface RecoveryPlan {
   readonly patientId: string;
   rescuerId: string;
@@ -415,6 +429,10 @@ export class TacticalWizardRuntime {
   private recoveryIneffectiveSinceTick: number | null = null;
   private recoverySafetyReplans = 0;
   private recoverySafetyAborts = 0;
+  private recoverySafetyDeferrals = 0;
+  private recoveryDeferredUntilTick = -1;
+  private recoveryPauseReason: string | null = null;
+  private recoveryWatchdogState: 'idle' | 'active' | 'suspended_by_safety' = 'idle';
   private recoveryLastReplanTick = -999;
   private recoveryLastReplanReason: string | null = null;
   private recoveryAbortUntilTick = -1;
@@ -474,6 +492,10 @@ export class TacticalWizardRuntime {
     this.recoveryIneffectiveSinceTick = null;
     this.recoverySafetyReplans = 0;
     this.recoverySafetyAborts = 0;
+    this.recoverySafetyDeferrals = 0;
+    this.recoveryDeferredUntilTick = -1;
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
     this.recoveryLastReplanTick = -999;
     this.recoveryLastReplanReason = null;
     this.recoveryAbortUntilTick = -1;
@@ -530,8 +552,10 @@ export class TacticalWizardRuntime {
     const livingCount = agents.filter((agent) => agent.alive).length;
     const recovery = this.recoveryView(base);
     const security = recovery.covererId === null ? null : agents.find((agent) => agent.id === recovery.covererId) ?? null;
-    const recoveryThreat = this.recoveryThreatPoint(base);
+    const recoveryThreatFact = this.recoveryThreatFact(base);
+    const recoveryThreat = clonePoint(recoveryThreatFact.point);
     const recoverySecurityPoint = this.recoveryPlan?.securityPoint ?? null;
+    const recoveryRescuer = recovery.rescuerId === null ? null : agents.find((agent) => agent.id === recovery.rescuerId) ?? null;
     const recoveryPositionReady = security !== null && recoverySecurityPoint !== null && distance(security.position, recoverySecurityPoint) <= RECOVERY_SECURITY_ARRIVAL;
     const recoveryLineOfSightReady = security !== null && (recoveryThreat === null ? security.targetVisible : hasLineOfSight(tacticalWizardNavigationGrid, navCell(security.position), navCell(recoveryThreat)));
     const recoveryFriendPositions = agents.filter((agent) => agent.id === recovery.downedAgentId || agent.id === recovery.rescuerId).map((agent) => agent.position);
@@ -577,7 +601,15 @@ export class TacticalWizardRuntime {
         pressure: Number(this.recoveryPressure.toFixed(2)),
         safetyReplans: this.recoverySafetyReplans,
         safetyAborts: this.recoverySafetyAborts,
+        safetyDeferrals: this.recoverySafetyDeferrals,
         lastReplanReason: this.recoveryLastReplanReason,
+        mode: recovery.phase === 'none' ? 'none' : recovery.covererId === null ? 'solo' : 'paired',
+        pauseReason: recovery.phase === 'none' ? null : this.recoveryPauseReason,
+        threatSource: recoveryThreatFact.source,
+        threatAgeTicks: recoveryThreatFact.ageTicks,
+        watchdogState: recovery.phase === 'none' ? 'idle' : this.recoveryWatchdogState,
+        distanceToTreatment: recoveryRescuer === null || this.recoveryPlan === null ? null : Number(distance(recoveryRescuer.position, this.recoveryPlan.treatmentPoint).toFixed(2)),
+        deferredUntilTick: this.recoveryDeferredUntilTick >= base.logicalTick ? this.recoveryDeferredUntilTick : null,
         security: {
           agentId: security?.id ?? null,
           weaponReady: security?.ammoRounds !== undefined && security.ammoRounds >= RECOVERY_WEAPON_READY_ROUNDS,
@@ -1129,6 +1161,9 @@ export class TacticalWizardRuntime {
     this.recoveryPressure = 0;
     this.recoverySafetyBand = 'stable';
     this.recoverySafetyDecision = 'continue';
+    this.recoveryDeferredUntilTick = -1;
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
     this.recoveryUnsafeSinceTick = null;
     this.recoveryIneffectiveSinceTick = null;
     this.replanRecoveryGeometry(state, 'recovery_started', false);
@@ -1139,7 +1174,7 @@ export class TacticalWizardRuntime {
     const plan = this.recoveryPlan;
     if (plan === null) return;
     if (this.recoverySafetyDecision === 'abort') {
-      this.abortRecovery(state, 'recovery safety authority aborted an unsafe rescue');
+      this.deferRecovery(state, 'recovery safety authority deferred an unsafe rescue');
       return;
     }
     if (this.recoverySafetyDecision === 'pause' || this.recoverySafetyDecision === 'reposition') return;
@@ -1163,7 +1198,7 @@ export class TacticalWizardRuntime {
     }
     const treatmentRange = distance(rescuer.position, plan.treatmentPoint);
     if (plan.phase === 'approach') {
-      if (treatmentRange <= 0.65 && distance(plan.treatmentPoint, patient.position) <= RECOVERY_RANGE) plan.phase = 'treat';
+      if (treatmentRange <= 0.75 && distance(plan.treatmentPoint, patient.position) <= RECOVERY_RANGE) plan.phase = 'treat';
       return;
     }
     if (treatmentRange > 0.85 || distance(plan.treatmentPoint, patient.position) > RECOVERY_RANGE) {
@@ -1178,6 +1213,9 @@ export class TacticalWizardRuntime {
     equipment.medkits = Math.max(0, equipment.medkits - 1);
     patientEquipment.health = Math.max(55, Math.round(patientEquipment.maxHealth * 0.55));
     this.reactions.delete(plan.patientId);
+    this.recoveryDeferredUntilTick = -1;
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
     this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery treatment completed; restored member returns to Tactical Planning.', { patientId: plan.patientId, rescuerId: plan.rescuerId, restoredHealth: patientEquipment.health });
     this.recoveryPlan = null;
     this.syncHostOperationalContext(this.hostState());
@@ -1235,6 +1273,8 @@ export class TacticalWizardRuntime {
       this.recoveryPressure = Math.max(0, this.recoveryPressure - 0.08);
       this.recoverySafetyBand = 'stable';
       this.recoverySafetyDecision = 'none';
+      this.recoveryPauseReason = null;
+      this.recoveryWatchdogState = 'idle';
       this.recoveryUnsafeSinceTick = null;
       this.recoveryIneffectiveSinceTick = null;
       return;
@@ -1245,8 +1285,22 @@ export class TacticalWizardRuntime {
 
     const patient = state.agents.find((agent) => agent.id === plan.patientId);
     const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
-    const security = plan.covererId === null ? null : state.agents.find((agent) => agent.id === plan.covererId) ?? null;
-    const threat = this.recoveryThreatPoint(state);
+    let security = plan.covererId === null ? null : state.agents.find((agent) => agent.id === plan.covererId) ?? null;
+    if (security !== null && !this.isAlive(security.id)) {
+      plan.covererId = null;
+      plan.securityPoint = null;
+      security = null;
+      this.replanRecoveryGeometry(state, 'security_became_downed_switch_to_solo', true);
+    }
+
+    if (this.recoveryDeferredUntilTick >= 0 && state.logicalTick >= this.recoveryDeferredUntilTick) {
+      this.recoveryDeferredUntilTick = -1;
+      this.recoveryPauseReason = null;
+      this.replanRecoveryGeometry(state, 'deferred_recovery_retry', true);
+    }
+
+    const threatFact = this.recoveryThreatFact(state);
+    const threat = threatFact.point;
     const weaponReady = security !== null && (this.equipment.get(security.id)?.ammoRounds ?? 0) >= RECOVERY_WEAPON_READY_ROUNDS;
     const positionReady = security !== null && plan.securityPoint !== null && distance(security.position, plan.securityPoint) <= RECOVERY_SECURITY_ARRIVAL;
     const lineOfSightReady = security !== null && (threat === null ? security.targetVisible : hasLineOfSight(tacticalWizardNavigationGrid, navCell(security.position), navCell(threat)));
@@ -1255,7 +1309,7 @@ export class TacticalWizardRuntime {
     const reaction = security === null ? null : this.activeReaction(security.id, state.logicalTick);
     const reactionReady = reaction === null || reaction.kind === 'grenade_suppress';
     const securityStalled = security !== null && !positionReady && security.stalledTicks >= 45;
-    const securityIneffective = threat !== null && (!weaponReady || !reactionReady || securityStalled || (positionReady && (!lineOfSightReady || !fireLaneReady)));
+    const securityIneffective = security !== null && threat !== null && (!weaponReady || !reactionReady || securityStalled || (positionReady && (!lineOfSightReady || !fireLaneReady)));
 
     if (securityIneffective) {
       this.recoveryIneffectiveSinceTick ??= state.logicalTick;
@@ -1269,24 +1323,53 @@ export class TacticalWizardRuntime {
     if (this.recoverySafetyBand === 'unsafe') this.recoveryUnsafeSinceTick ??= state.logicalTick;
     else this.recoveryUnsafeSinceTick = null;
     const unsafeTicks = this.recoveryUnsafeSinceTick === null ? 0 : state.logicalTick - this.recoveryUnsafeSinceTick + 1;
-    const nextDecision = recoveryDecision(this.recoverySafetyBand, unsafeTicks);
+
+    if (this.recoveryDeferredUntilTick > state.logicalTick) {
+      this.recoverySafetyDecision = 'pause';
+      this.recoveryPauseReason = 'deferred_safety_retry';
+      this.recoveryWatchdogState = 'suspended_by_safety';
+      plan.stalledTicks = 0;
+      if (rescuer !== undefined) plan.lastRescuerDistance = distance(rescuer.position, plan.treatmentPoint);
+      plan.lastTreatmentProgress = plan.treatmentProgress;
+      return;
+    }
+
+    let nextDecision = recoveryDecision(this.recoverySafetyBand, unsafeTicks);
+    if (this.recoverySafetyBand === 'pressured' && threat === null) nextDecision = 'continue';
+    else if (this.recoverySafetyBand === 'pressured' && plan.phase === 'approach' && !plan.treatmentExposed && plan.pathExposureCells === 0) nextDecision = 'continue';
+
     if (nextDecision === 'reposition' && this.recoverySafetyDecision !== 'reposition') {
       this.rescueInterruptedCount += 1;
       this.lastRescueInterruptedTick = state.logicalTick;
       this.replanRecoveryGeometry(state, 'incoming_fire_forced_reposition', true);
     }
+
     this.recoverySafetyDecision = nextDecision;
+    this.recoveryPauseReason = nextDecision === 'pause'
+      ? securityIneffective ? 'paired_security_ineffective' : 'incoming_fire_pressure'
+      : nextDecision === 'reposition' ? 'unsafe_pressure_fallback' : null;
+
     if (nextDecision === 'abort' || unsafeTicks >= RECOVERY_UNSAFE_ABORT_TICKS) {
-      this.abortRecovery(state, 'sustained unsafe pressure exceeded rescue tolerance');
+      this.deferRecovery(state, 'sustained unsafe pressure exceeded rescue tolerance');
       return;
     }
 
     if (patient !== undefined && rescuer !== undefined && plan.phase !== 'establish_cover') {
       const rescuerDistance = distance(rescuer.position, plan.treatmentPoint);
+      if (nextDecision === 'pause' || nextDecision === 'reposition') {
+        this.recoveryWatchdogState = 'suspended_by_safety';
+        plan.stalledTicks = 0;
+        plan.lastTreatmentProgress = plan.treatmentProgress;
+        plan.lastRescuerDistance = rescuerDistance;
+        return;
+      }
+
+      this.recoveryWatchdogState = 'active';
       const progressed = plan.treatmentProgress > plan.lastTreatmentProgress + 0.01 || rescuerDistance < plan.lastRescuerDistance - 0.15;
       if (progressed) {
         plan.lastProgressTick = state.logicalTick;
         plan.stalledTicks = 0;
+        plan.stallReplans = 0;
       } else plan.stalledTicks += 1;
       plan.lastTreatmentProgress = plan.treatmentProgress;
       plan.lastRescuerDistance = rescuerDistance;
@@ -1294,13 +1377,13 @@ export class TacticalWizardRuntime {
         plan.stalledTicks = 0;
         plan.stallReplans += 1;
         if (plan.stallReplans > RECOVERY_MAX_STALL_REPLANS) {
-          this.abortRecovery(state, 'recovery progress watchdog exhausted geometry replans');
+          this.deferRecovery(state, 'recovery progress watchdog exhausted geometry replans');
           return;
         }
         this.replanRecoveryGeometry(state, 'recovery_progress_watchdog', true);
         if (plan.phase === 'treat') this.recoverySafetyDecision = 'reposition';
       }
-    }
+    } else this.recoveryWatchdogState = 'idle';
   }
 
   private replanRecoveryGeometry(state: TacticalHostState, reason: string, countReplan: boolean): boolean {
@@ -1333,6 +1416,9 @@ export class TacticalWizardRuntime {
     plan.treatmentExposed = selected.treatmentExposed;
     plan.pathExposureCells = selected.pathExposureCells;
     plan.securityPoint = selected.security === null ? null : { ...selected.security.point };
+    plan.stalledTicks = 0;
+    plan.lastTreatmentProgress = plan.treatmentProgress;
+    plan.lastRescuerDistance = distance(rescuer.position, selected.treatmentPoint);
     const coverMember = plan.covererId === null ? undefined : this.hostAccess().members.find((entry) => entry.id === plan.covererId);
     if (coverMember !== undefined && plan.securityPoint !== null) coverMember.tacticalTarget = { ...plan.securityPoint };
     this.contracts.delete(plan.rescuerId);
@@ -1355,8 +1441,30 @@ export class TacticalWizardRuntime {
     return true;
   }
 
+  private recoveryThreatFact(state: TacticalHostState): RecoveryThreatFact {
+    const confirmedVisual = state.agents.some((agent) => this.isAlive(agent.id) && agent.targetVisible);
+    if (confirmedVisual) return { point: { ...state.player }, source: 'visual', ageTicks: 0 };
+
+    if (state.logicalTick < this.threatUntilTick && this.threatSector !== null) {
+      return {
+        point: { ...this.threatSector },
+        source: 'recent_fire',
+        ageTicks: this.threatLastHitTick === null ? 0 : Math.max(0, state.logicalTick - this.threatLastHitTick),
+      };
+    }
+
+    const confirmedAge = this.lastConfirmedTick === null ? null : Math.max(0, state.logicalTick - this.lastConfirmedTick);
+    const freshLkp = state.squad.alertState === 'active'
+      && state.squad.sharedLastKnownPosition !== null
+      && state.squad.lostContactTicks <= 12
+      && (confirmedAge === null || confirmedAge <= 12);
+    if (freshLkp) return { point: { ...state.squad.sharedLastKnownPosition! }, source: 'fresh_lkp', ageTicks: confirmedAge ?? state.squad.lostContactTicks };
+
+    return { point: null, source: 'none', ageTicks: null };
+  }
+
   private recoveryThreatPoint(state: TacticalHostState): GridPoint | null {
-    return clonePoint(this.lastConfirmedPosition ?? this.threatSector ?? state.squad.sharedLastKnownPosition);
+    return clonePoint(this.recoveryThreatFact(state).point);
   }
 
   private executeRecoverySecurity(state: TacticalHostState): void {
@@ -1383,12 +1491,42 @@ export class TacticalWizardRuntime {
     this.hostAccess().tryFire(member, state.player, 'recovery security confirmed visual');
   }
 
+  private deferRecovery(state: TacticalHostState, reason: string): void {
+    const plan = this.recoveryPlan;
+    if (plan === null) return;
+    this.recoverySafetyDeferrals += 1;
+    this.recoveryDeferredUntilTick = state.logicalTick + 8;
+    this.recoverySafetyDecision = 'pause';
+    this.recoveryPauseReason = 'deferred_safety_retry';
+    this.recoveryWatchdogState = 'suspended_by_safety';
+    plan.phase = 'approach';
+    plan.treatmentProgress = 0;
+    plan.stalledTicks = 0;
+    plan.stallReplans = 0;
+    plan.lastTreatmentProgress = 0;
+    const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
+    if (rescuer !== undefined) plan.lastRescuerDistance = distance(rescuer.position, plan.treatmentPoint);
+    this.contracts.delete(plan.rescuerId);
+    if (plan.covererId !== null) this.contracts.delete(plan.covererId);
+    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery obligation deferred by safety authority; casualty ownership is retained for a bounded retry.', {
+      patientId: plan.patientId,
+      rescuerId: plan.rescuerId,
+      covererId: plan.covererId,
+      reason,
+      retryTick: this.recoveryDeferredUntilTick,
+      safetyDeferrals: this.recoverySafetyDeferrals,
+    });
+  }
+
   private abortRecovery(state: TacticalHostState, reason: string): void {
     const plan = this.recoveryPlan;
     if (plan === null) return;
     this.recoverySafetyAborts += 1;
     this.recoveryAbortUntilTick = state.logicalTick + 8;
     this.recoverySafetyDecision = 'abort';
+    this.recoveryDeferredUntilTick = -1;
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
     this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery contract aborted by safety authority.', { patientId: plan.patientId, rescuerId: plan.rescuerId, covererId: plan.covererId, reason, safetyAborts: this.recoverySafetyAborts });
     this.recoveryPlan = null;
     this.contracts.clear();
