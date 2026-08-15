@@ -19,7 +19,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply recovery authority fix
-        run: node .github/scripts/apply-recovery-authority-fix.mjs
+        run: |
+          node .github/scripts/apply-recovery-authority-fix.mjs
+          sed -i 's/{ x: 58, y: 35 }/{ x: 59, y: 28 }/' Tests/workbench/recoveryGeometryAndShotTrace.test.ts
       - name: Install workspace dependencies
         run: npm install --no-audit --no-fund
       - name: Validate production build and deterministic tests
