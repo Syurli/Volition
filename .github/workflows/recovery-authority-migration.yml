@@ -1,0 +1,33 @@
+name: Recovery authority migration
+
+on:
+  push:
+    branches: [agent/recovery-authority-solo-work2]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/recovery-authority-solo-work2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply recovery authority fix
+        run: node .github/scripts/apply-recovery-authority-fix.mjs
+      - name: Install workspace dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate production build and deterministic tests
+        run: npm run build
+      - name: Commit migrated production files
+        run: |
+          git config user.name "Shilin Li"
+          git config user.email "56470374+Syurli@users.noreply.github.com"
+          git add Apps/Workbench/src/simulation/tacticalWizardRuntime.ts Tests/workbench/recoveryGeometryAndShotTrace.test.ts
+          git commit -m "Fix solo recovery authority and deferred rescue"
+          git push origin HEAD:agent/recovery-authority-solo-work2
