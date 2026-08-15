@@ -1,0 +1,37 @@
+name: Agent Recovery Geometry Migration
+
+on:
+  push:
+    branches:
+      - agent/recovery-geometry-tactical-clarity
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/recovery-geometry-tactical-clarity
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply recovery geometry migration
+        run: node Scripts/agent-recovery-geometry.mjs
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Validate migration
+        run: npm run build
+      - name: Commit migration output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Apps/Workbench/src/simulation Apps/Workbench/src/components/SimulationRecoveryCanvas.tsx Apps/Workbench/src/simulation-runtime.css Tests/workbench/recoveryGeometryAndShotTrace.test.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "Unify rescue geometry and tactical execution"
+          git push origin HEAD:agent/recovery-geometry-tactical-clarity
