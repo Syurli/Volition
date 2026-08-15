@@ -65,6 +65,23 @@ describe('Tactical Wizard production architecture guardrails', () => {
     expect(worldCanvas).toContain('className="sim-player-core"');
   });
 
+  it('keeps the combat viewport before secondary simulation diagnostics', () => {
+    const corePages = readFileSync(resolve(src, 'pages/RuntimeCorePages.tsx'), 'utf8');
+    const combatPages = readFileSync(resolve(src, 'pages/RuntimeCombatPages.tsx'), 'utf8');
+    const runtimeCss = readFileSync(resolve(src, 'simulation-runtime.css'), 'utf8');
+    const coreViewport = corePages.indexOf('<BaseSimulationPage {...props} />');
+    const coreDetails = corePages.indexOf('<details className="simulation-secondary-details simulation-runtime-details">');
+    const combatViewport = combatPages.indexOf('<BaseSimulationPage {...runtimeProps} />');
+    const combatDetails = combatPages.indexOf('<details className="simulation-secondary-details simulation-test-details">');
+    expect(coreViewport).toBeGreaterThan(-1);
+    expect(coreDetails).toBeGreaterThan(coreViewport);
+    expect(combatViewport).toBeGreaterThan(-1);
+    expect(combatDetails).toBeGreaterThan(combatViewport);
+    expect(runtimeCss).toContain('height:calc(100dvh - 158px)');
+    expect(runtimeCss).toContain('grid-template-rows:auto minmax(0,1fr)');
+    expect(runtimeCss).toContain('.simulation-workspace-shell .simulation-combat-wrap');
+  });
+
   it('keeps one explicit responsibility order and one execution contract', () => {
     const runtime = readFileSync(resolve(simulationDir, 'tacticalWizardRuntime.ts'), 'utf8');
     const hierarchy = readFileSync(resolve(simulationDir, 'tacticalWizardHierarchy.ts'), 'utf8');
