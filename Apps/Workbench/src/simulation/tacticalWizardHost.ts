@@ -166,6 +166,7 @@ interface MutableMember {
   grenadeCooldownUntilTick: number;
   specialAction: SpecialAction;
   specialActionPulse: number;
+  surpriseUsedThisPlan: boolean;
   meleePulse: number;
   meleeCooldownUntilTick: number;
 }
@@ -209,6 +210,9 @@ export class TacticalWizardHost {
   private meleeClaimId: string | null = null;
   private planRevision = 0;
   private lastPlanReplanTick = -999;
+  private tacticalPlanningSuspended = false;
+  private readonly tacticalExcludedAgentIds = new Set<string>();
+  private operationalPlayerFacing: GridPoint = { x: 1, y: 0 };
   private readonly eventLog: string[] = ['Simulation ready. Host fire-lane deconfliction / compound map initialized.'];
   private runLog: RunLogEntry[] = [];
   private runLogSequence = 0;
@@ -270,6 +274,9 @@ export class TacticalWizardHost {
     this.meleeClaimId = null;
     this.planRevision = 0;
     this.lastPlanReplanTick = -999;
+    this.tacticalPlanningSuspended = false;
+    this.tacticalExcludedAgentIds.clear();
+    this.operationalPlayerFacing = { x: 1, y: 0 };
     this.eventLog.splice(0, this.eventLog.length, 'Simulation reset. Host fire-lane deconfliction / compound map initialized.');
     this.runLog = [];
     this.runLogSequence = 0;
@@ -298,6 +305,14 @@ export class TacticalWizardHost {
     const moved = this.setPlayerPositionInternal({ x: this.player.x + dx * PLAYER_MOVE_STEP, y: this.player.y + dy * PLAYER_MOVE_STEP }, 'direct-control');
     if (moved) this.pendingNoiseIntensity = Math.max(this.pendingNoiseIntensity, 0.35);
     return moved;
+  }
+
+  setOperationalContext(context: { readonly suspendTacticalClock: boolean; readonly excludedAgentIds: readonly string[]; readonly playerFacing: GridPoint }): void {
+    this.tacticalPlanningSuspended = context.suspendTacticalClock;
+    this.tacticalExcludedAgentIds.clear();
+    for (const id of context.excludedAgentIds) this.tacticalExcludedAgentIds.add(id);
+    this.operationalPlayerFacing = normalizeDirection(context.playerFacing);
+    this.normalizeRoleOrder();
   }
 
   step(): TacticalWizardSimulationState {
@@ -377,7 +392,7 @@ export class TacticalWizardHost {
         stationaryTargetTicks: this.stationaryTargetTicks,
         lostContactTicks: this.lostContactTicks,
         maneuverCycle: this.maneuverCycle,
-        spread: Number(pairwiseSpread(this.members.map((member) => member.position)).toFixed(2)),
+        spread: Number(pairwiseSpread((this.eligibleMembers().length > 0 ? this.eligibleMembers() : this.members).map((member) => member.position)).toFixed(2)),
         suppressorId: this.suppressorId,
         moverId: this.moverId,
         observerId: this.observerId,
@@ -425,8 +440,15 @@ export class TacticalWizardHost {
     const visibility = new Map(this.members.map((member) => [member.id, this.canSeePlayer(member)]));
     this.updateSquadAlert(visibility);
     if (this.alertState === 'active') {
-      this.updateDoctrine(visibility);
-      this.ensureTacticalPlan();
+      if (this.tacticalPlanningSuspended) {
+        this.tacticStartedTick += 1;
+        this.contactStartedTick += 1;
+        this.phaseStartedTick += 1;
+        this.tacticReason = `Current ${this.tactic} maneuver is suspended while Recovery owns the execution geometry.`;
+      } else {
+        this.updateDoctrine(visibility);
+        this.ensureTacticalPlan();
+      }
     }
 
     for (const member of this.members) {
@@ -516,7 +538,7 @@ export class TacticalWizardHost {
       throw new Error('Simulation invariant violated: squad members share a navigation cell.');
     }
     this.advancePatrolIfReady();
-    this.advanceBoundingIfReady();
+    if (!this.tacticalPlanningSuspended) this.advanceBoundingIfReady();
   }
 
   private movementTarget(member: MutableMember): GridPoint | null {
@@ -623,7 +645,7 @@ export class TacticalWizardHost {
   }
 
   private executeDecisionEffects(): void {
-    if (this.alertState !== 'active' || this.sharedLastKnownPosition === null) return;
+    if (this.alertState !== 'active' || this.sharedLastKnownPosition === null || this.tacticalPlanningSuspended) return;
 
     if (this.tactic === 'sweep') {
       for (const member of this.members) {
@@ -642,7 +664,18 @@ export class TacticalWizardHost {
       const settled = member.tacticalTarget !== null && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS + 0.2;
       if (this.tactic === 'bounding' && member.role === 'suppressor' && settled && this.logicalTick % 2 === 0) this.tryFire(member, this.sharedLastKnownPosition, 'suppression from cover');
       else if (this.tactic === 'flank' && member.role === 'suppressor' && settled && this.logicalTick % 2 === 0) this.tryFire(member, this.sharedLastKnownPosition, 'fixing fire');
-      else if (this.tactic === 'flank' && member.role === 'flanker' && settled && this.logicalTick % 2 === 0) this.tryFire(member, this.sharedLastKnownPosition, 'flanking fire');
+      else if (this.tactic === 'flank' && member.role === 'flanker' && settled && this.logicalTick % 2 === 0) {
+        const surprise = !member.surpriseUsedThisPlan && this.isRearQuarterOpportunity(member);
+        if (surprise) {
+          member.surpriseUsedThisPlan = true;
+          member.specialAction = 'surprise';
+          member.specialActionPulse = 12;
+          member.opportunityPurpose = 'ambush';
+          this.pushEvent(`T${this.logicalTick}: ${member.label} completed the flank outside the player's forward attention and opened with surprise fire.`);
+          this.log('agent', member.id, member.label, 'fire', `${member.label} converted a completed flank into a surprise opening.`, { tactic: this.tactic, rearQuarter: true, target: { ...this.sharedLastKnownPosition } });
+        }
+        this.tryFire(member, this.sharedLastKnownPosition, surprise ? 'surprise flanking fire' : 'flanking fire');
+      }
       else if (this.tactic === 'crossfire' && member.role === 'crossfire' && settled && this.logicalTick % 2 === 0) this.tryFire(member, this.sharedLastKnownPosition, 'crossfire');
       else if (this.tactic === 'assault' && member.role === 'assaulter' && this.logicalTick % 2 === 0) this.tryFire(member, this.sharedLastKnownPosition, 'assault');
       else if (member.targetVisible && settled && this.logicalTick % 6 === 0) this.tryFire(member, this.player, `${this.tactic} support`);
@@ -738,7 +771,7 @@ export class TacticalWizardHost {
 
   private currentFireLanes(): readonly FireLane[] {
     if (this.alertState !== 'active' || this.sharedLastKnownPosition === null || this.tactic === 'sweep') return [];
-    const laneOwners = this.members.filter((member) => {
+    const laneOwners = this.eligibleMembers().filter((member) => {
       const settled = member.tacticalTarget !== null && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS + 0.35;
       return settled && (member.task === 'suppress' || member.task === 'crossfire' || member.task === 'hold_cover');
     });
@@ -759,7 +792,7 @@ export class TacticalWizardHost {
   }
 
   private updateSquadAlert(visibility: ReadonlyMap<string, boolean>): void {
-    const visibleMembers = this.members.filter((member) => visibility.get(member.id) === true);
+    const visibleMembers = this.eligibleMembers().filter((member) => visibility.get(member.id) === true);
     const reporter = [...visibleMembers].sort((left, right) => left.id.localeCompare(right.id, 'en'))[0];
     if (this.alertState === 'active') {
       if (reporter === undefined) {
@@ -835,8 +868,8 @@ export class TacticalWizardHost {
       stationaryTargetTicks: this.stationaryTargetTicks,
       tacticTicks: Math.max(0, this.logicalTick - this.tacticStartedTick),
       boundingPhase: this.boundingPhase,
-      visibleMembers: this.members.filter((member) => visibility.get(member.id) === true).length,
-      stalledMembers: this.members.filter((member) => member.stalledTicks >= STALLED_REPLAN_FRAMES).length,
+      visibleMembers: this.eligibleMembers().filter((member) => visibility.get(member.id) === true).length,
+      stalledMembers: this.eligibleMembers().filter((member) => member.stalledTicks >= STALLED_REPLAN_FRAMES).length,
       lostContactTicks: this.lostContactTicks,
       maneuverCycle: this.maneuverCycle,
       planCompletion: this.planCompletion(),
@@ -882,7 +915,15 @@ export class TacticalWizardHost {
   }
 
   private applyRoles(): void {
+    this.normalizeRoleOrder();
     for (const member of this.members) {
+      if (this.tacticalExcludedAgentIds.has(member.id)) {
+        member.role = 'support';
+        member.task = 'regroup';
+        member.tacticalTarget = null;
+        member.opportunityPurpose = 'none';
+        continue;
+      }
       if (this.alertState !== 'active') member.role = 'patrol';
       else if (this.tactic === 'bounding') member.role = member.id === this.suppressorId ? 'suppressor' : member.id === this.moverId ? 'mover' : 'observer';
       else if (this.tactic === 'flank') member.role = member.id === this.suppressorId ? 'suppressor' : member.id === this.moverId ? 'flanker' : 'support';
@@ -896,19 +937,21 @@ export class TacticalWizardHost {
   private planCompletion(): number {
     if (this.alertState !== 'active') return 0;
     if (this.tactic === 'sweep') {
-      const sweepers = this.members.filter((member) => member.task === 'search_sector');
+      const sweepers = this.eligibleMembers().filter((member) => member.task === 'search_sector');
       if (sweepers.length === 0) return 0;
       return sweepers.reduce((sum, member) => sum + this.memberSearchProgress(member), 0) / sweepers.length;
     }
     const settled = (id: string | null): boolean => {
       if (id === null) return false;
       const member = this.members.find((entry) => entry.id === id);
-      return member?.tacticalTarget !== null && member?.tacticalTarget !== undefined && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS;
+      if (member === undefined || this.tacticalExcludedAgentIds.has(member.id)) return false;
+      return member.tacticalTarget !== null && member?.tacticalTarget !== undefined && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS;
     };
     if (this.tactic === 'bounding' || this.tactic === 'flank') return settled(this.moverId) ? 1 : 0;
     if (this.tactic === 'crossfire' || this.tactic === 'assault') return settled(this.moverId) && settled(this.observerId) ? 1 : 0;
-    const settledCount = this.members.filter((member) => member.tacticalTarget !== null && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS).length;
-    return settledCount >= 2 ? 1 : settledCount / this.members.length;
+    const eligible = this.eligibleMembers();
+    const settledCount = eligible.filter((member) => member.tacticalTarget !== null && distance(member.position, member.tacticalTarget) <= ARRIVAL_RADIUS).length;
+    return eligible.length === 0 ? 0 : settledCount >= Math.min(2, eligible.length) ? 1 : settledCount / eligible.length;
   }
 
   private memberSearchProgress(member: MutableMember): number {
@@ -921,15 +964,16 @@ export class TacticalWizardHost {
 
   private ensureTacticalPlan(): void {
     if (this.sharedLastKnownPosition === null) return;
-    const missingTarget = this.tactic !== 'sweep' && this.members.some((member) => member.tacticalTarget === null);
-    const hardStall = this.members.some((member) => member.stalledTicks >= STALLED_REPLAN_FRAMES);
+    const eligible = this.eligibleMembers();
+    const missingTarget = this.tactic !== 'sweep' && eligible.some((member) => member.tacticalTarget === null);
+    const hardStall = eligible.some((member) => member.stalledTicks >= STALLED_REPLAN_FRAMES);
     const persistentFireBlock = this.tactic !== 'sweep'
       && this.logicalTick - this.lastPlanReplanTick >= PLAN_REPLAN_COOLDOWN_TICKS
-      && this.members.some((member) => isSustainedFireTask(member.task) && member.fireBlockedTicks >= FIRE_BLOCKED_REPLAN_TICKS);
+      && eligible.some((member) => isSustainedFireTask(member.task) && member.fireBlockedTicks >= FIRE_BLOCKED_REPLAN_TICKS);
     if (!missingTarget && !hardStall && !persistentFireBlock) return;
     if (hardStall) this.pushEvent(`T${this.logicalTick}: tactical element hard-stalled; rebuild cover / lane assignment.`);
     if (persistentFireBlock) {
-      const blocked = this.members.filter((member) => member.fireBlockedTicks >= FIRE_BLOCKED_REPLAN_TICKS).map((member) => member.label).join(', ');
+      const blocked = eligible.filter((member) => member.fireBlockedTicks >= FIRE_BLOCKED_REPLAN_TICKS).map((member) => member.label).join(', ');
       this.lastPlanReplanTick = this.logicalTick;
       this.tacticReason = `Fire-lane deconfliction: ${blocked} remained blocked by a friendly; current firing geometry is invalid.`;
       this.pushEvent(`T${this.logicalTick}: persistent friendly fire-lane block detected; reselect tactical positions.`);
@@ -939,7 +983,8 @@ export class TacticalWizardHost {
   }
 
   private refreshTacticalPlan(): void {
-    if (this.sharedLastKnownPosition === null) return;
+    if (this.sharedLastKnownPosition === null || this.tacticalPlanningSuspended) return;
+    this.normalizeRoleOrder();
     this.planRevision += 1;
     if (this.tactic === 'bounding') this.refreshBoundingPlan();
     else if (this.tactic === 'flank') this.refreshFlankPlan();
@@ -968,6 +1013,7 @@ export class TacticalWizardHost {
       member.buddyRole = 'none';
       member.buddyReady = false;
       member.opportunityPurpose = 'none';
+      member.surpriseUsedThisPlan = false;
     }
   }
 
@@ -996,7 +1042,7 @@ export class TacticalWizardHost {
     this.coverSlots = discoverCoverSlots(tacticalWizardNavigationGrid, toNavCell(threat));
     this.resetPlanFields();
     const reserved = new Set<string>();
-    for (const member of this.members) {
+    for (const member of this.eligibleMembers()) {
       if (member.id === this.moverId) {
         const slot = selectCoverSlot(tacticalWizardNavigationGrid, this.coverSlots, toNavCell(member.position), toNavCell(threat), reserved, 'flank', this.flankSide());
         member.coverSlot = slot;
@@ -1077,7 +1123,7 @@ export class TacticalWizardHost {
     this.coverSlots = discoverCoverSlots(tacticalWizardNavigationGrid, toNavCell(lkp));
     this.resetPlanFields();
     const side = this.flankSide();
-    const ordered = [...this.members].sort((left, right) => left.id.localeCompare(right.id, 'en'));
+    const ordered = [...this.eligibleMembers()].sort((left, right) => left.id.localeCompare(right.id, 'en'));
     const overwatch = this.suppressorId === null ? ordered[2] : this.members.find((member) => member.id === this.suppressorId) ?? ordered[2];
     const searchers = ordered.filter((member) => member.id !== overwatch?.id);
     this.searchLeadId = searchers[0]?.id ?? null;
@@ -1106,13 +1152,14 @@ export class TacticalWizardHost {
   private refreshRegroupPlan(): void {
     const threat = this.sharedLastKnownPosition;
     if (threat === null) return;
-    const origin = centroid(this.members.map((member) => member.position));
+    const eligible = this.eligibleMembers();
+    const origin = centroid(eligible.map((member) => member.position));
     const side = this.flankSide();
     this.coverSlots = discoverCoverSlots(tacticalWizardNavigationGrid, toNavCell(threat));
     this.resetPlanFields();
     const reservedSlots = new Set<string>();
     const reservedCells = new Set<string>();
-    this.members.forEach((member, index) => {
+    eligible.forEach((member, index) => {
       const slot = selectCoverSlot(tacticalWizardNavigationGrid, this.coverSlots, toNavCell(member.position), toNavCell(threat), reservedSlots, 'support', index === 0 ? side : index === 2 ? -side : 0);
       if (slot !== null) {
         member.coverSlot = slot;
@@ -1129,7 +1176,7 @@ export class TacticalWizardHost {
   }
 
   private fallbackSectorFlank(member: MutableMember, threat: GridPoint, side: number, reservedSlotIds: ReadonlySet<string>): GridPoint {
-    const origin = centroid(this.members.map((entry) => entry.position));
+    const origin = centroid(this.eligibleMembers().map((entry) => entry.position));
     const reservedCells = new Set<string>();
     for (const slot of this.coverSlots) if (reservedSlotIds.has(slot.id)) reserveCellArea(reservedCells, slot.position, 1);
     return selectSectorPoint(tacticalWizardNavigationGrid, toNavCell(member.position), toNavCell(threat), toNavCell(origin), reservedCells, { angleOffsetDegrees: side * 118, angleToleranceDegrees: 36, minRange: 5, maxRange: 9, desiredRange: 6.5, requireLineOfSight: true, minMoveDistance: 4 }) ?? { ...member.position };
@@ -1279,7 +1326,7 @@ export class TacticalWizardHost {
   }
 
   private advancePatrolIfReady(): void {
-    if (this.alertState !== 'idle' || !this.members.every((member) => distance(member.position, this.getPatrolTarget(member)) <= ARRIVAL_RADIUS)) return;
+    if (this.alertState !== 'idle' || !this.eligibleMembers().every((member) => distance(member.position, this.getPatrolTarget(member)) <= ARRIVAL_RADIUS)) return;
     this.patrolIndex = (this.patrolIndex + 1) % tacticalWizardTestMap.patrolPoints.length;
     this.pushEvent(`T${this.logicalTick}: squad patrol waypoint advanced to P${this.patrolIndex + 1}.`);
   }
@@ -1354,7 +1401,29 @@ export class TacticalWizardHost {
     member.opportunityPurpose = 'none';
     member.specialAction = 'none';
     member.specialActionPulse = 0;
+    member.surpriseUsedThisPlan = false;
     member.meleePulse = 0;
+  }
+
+  private eligibleMembers(): MutableMember[] {
+    return this.members.filter((member) => !this.tacticalExcludedAgentIds.has(member.id));
+  }
+
+  private normalizeRoleOrder(): void {
+    const eligible = this.eligibleMembers().sort((left, right) => left.id.localeCompare(right.id, 'en'));
+    const eligibleIds = new Set(eligible.map((member) => member.id));
+    const ordered: string[] = [];
+    for (const id of [this.suppressorId, this.moverId, this.observerId]) if (id !== null && eligibleIds.has(id) && !ordered.includes(id)) ordered.push(id);
+    for (const member of eligible) if (!ordered.includes(member.id)) ordered.push(member.id);
+    this.suppressorId = ordered[0] ?? null;
+    this.moverId = ordered[1] ?? null;
+    this.observerId = ordered[2] ?? null;
+  }
+
+  private isRearQuarterOpportunity(member: MutableMember): boolean {
+    const toMember = normalizeDirection({ x: member.position.x - this.player.x, y: member.position.y - this.player.y });
+    const facing = normalizeDirection(this.operationalPlayerFacing);
+    return toMember.x * facing.x + toMember.y * facing.y <= -0.3;
   }
 
   private pushEvent(message: string): void {
@@ -1367,7 +1436,7 @@ export class TacticalWizardHost {
   }
 
   private logRoleAssignments(): void {
-    this.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'roles', `Roles / tasks assigned for ${this.tactic}.`, { assignments: this.members.map((member) => `${member.id}=${member.role}/${member.task}/${member.opportunityPurpose}`), tactic: this.tactic });
+    this.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'roles', `Roles / tasks assigned for ${this.tactic}.`, { assignments: this.eligibleMembers().map((member) => `${member.id}=${member.role}/${member.task}/${member.opportunityPurpose}`), excludedAgentIds: [...this.tacticalExcludedAgentIds], tactic: this.tactic });
   }
 
   private logPlan(): void {
@@ -1375,12 +1444,13 @@ export class TacticalWizardHost {
       tactic: this.tactic,
       cycle: this.maneuverCycle,
       planRevision: this.planRevision,
-      spread: Number(pairwiseSpread(this.members.map((member) => member.position)).toFixed(2)),
+      spread: Number(pairwiseSpread((this.eligibleMembers().length > 0 ? this.eligibleMembers() : this.members).map((member) => member.position)).toFixed(2)),
       safeFireLanes: this.safeFireLaneCount(),
       searchLeadId: this.searchLeadId,
       searchCoverId: this.searchCoverId,
       searchOverwatchId: this.searchOverwatchId,
-      targets: this.members.map((member) => `${member.id}:${member.task}/${member.opportunityPurpose}->${member.tacticalTarget ? `${member.tacticalTarget.x},${member.tacticalTarget.y}` : 'hold'}`),
+      targets: this.eligibleMembers().map((member) => `${member.id}:${member.task}/${member.opportunityPurpose}->${member.tacticalTarget ? `${member.tacticalTarget.x},${member.tacticalTarget.y}` : 'hold'}`),
+      excludedAgentIds: [...this.tacticalExcludedAgentIds],
     });
   }
 
@@ -1438,6 +1508,7 @@ function createMembers(): MutableMember[] {
     grenadeCooldownUntilTick: 0,
     specialAction: 'none',
     specialActionPulse: 0,
+    surpriseUsedThisPlan: false,
     meleePulse: 0,
     meleeCooldownUntilTick: 0,
   }));

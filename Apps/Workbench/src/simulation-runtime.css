@@ -136,6 +136,12 @@
 .sim-rescue-cover text{fill:#e6c684;font-size:8px;font-weight:700;paint-order:stroke;stroke:#091019;stroke-width:2px}
 .sim-recovery-banner rect{fill:#0a1118;fill-opacity:.94;stroke:#80bd99;stroke-width:1}
 .sim-recovery-banner text{fill:#a8d7b8;font-size:8px;font-weight:800}
+.sim-recovery-geometry circle{fill:#0a1118;fill-opacity:.82;stroke-width:1.5;stroke-dasharray:3 2}
+.sim-recovery-geometry text{font-size:7px;font-weight:800;paint-order:stroke;stroke:#091019;stroke-width:2px}
+.sim-recovery-geometry-treatment circle{stroke:#8fd3a8}.sim-recovery-geometry-treatment text{fill:#a9dfbb}
+.sim-recovery-geometry-approach circle{stroke:#75a9cf}.sim-recovery-geometry-approach text{fill:#9bc5e4}
+.sim-recovery-geometry-fallback circle{stroke:#a99bc7}.sim-recovery-geometry-fallback text{fill:#c2b8dd}
+.sim-recovery-geometry-security circle{stroke:#e0b66e}.sim-recovery-geometry-security text{fill:#e6c684}
 
 @media(max-width:1180px){
   .simulation-workspace-shell>.simulation-page{
