@@ -27,10 +27,23 @@ interface SimulationProps {
 
 export function SimulationPage(props: SimulationProps) {
   const { testLoadout, onApplyTestLoadout, ...runtimeProps } = props;
-  return <div className="simulation-v11-page">
-    <TestLoadoutPanel locale={props.locale} value={testLoadout} onApply={onApplyTestLoadout} />
-    <ThreatResponsePanel simulation={props.simulation} locale={props.locale} />
+  const L = (zh: string, en: string) => props.locale === 'zh-CN' ? zh : en;
+  const threat = props.simulation.threatResponse;
+  const responseSummary = threat.active
+    ? threat.phase === 'break_contact' ? L('脱离枪线', 'break contact') : L('推测扇区搜索', 'sector search')
+    : L('待命', 'standby');
+  return <div className="simulation-runtime-page">
     <BaseSimulationPage {...runtimeProps} />
+    <details className="simulation-secondary-details simulation-test-details">
+      <summary>
+        <span>{L('测试配置与安全契约', 'Test Setup & Safety Contract')}</span>
+        <small>{L('弹药', 'Ammo')} {testLoadout.ammoRounds} · {L('投掷物', 'Grenades')} {testLoadout.grenades} · {L('反伏击', 'Response')} {responseSummary}</small>
+      </summary>
+      <div className="simulation-secondary-grid simulation-secondary-grid-test">
+        <TestLoadoutPanel locale={props.locale} value={testLoadout} onApply={onApplyTestLoadout} />
+        <ThreatResponsePanel simulation={props.simulation} locale={props.locale} />
+      </div>
+    </details>
   </div>;
 }
 
