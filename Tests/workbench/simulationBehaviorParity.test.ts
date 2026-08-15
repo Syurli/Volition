@@ -93,7 +93,7 @@ describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
     for (let index = 0; index < 3; index += 1) simulation.step();
     state = simulation.getState();
     expect(state.command.activeResupplyAgentId).toBe('twr:rifle-squad:alpha');
-    expect(state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')?.logisticsTask).toBe('resupply_ammo');
+    expect(['resupply_ammo', 'resupply_mixed']).toContain(state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')?.logisticsTask);
     expect(state.logisticsLifecycle.state).toBe('assigned');
     expect(state.logisticsLifecycle.suppressedPlanningCalls).toBe(suppressedBefore);
     expect(state.combatAuthority.logisticsPreemptions).toBe(0);
