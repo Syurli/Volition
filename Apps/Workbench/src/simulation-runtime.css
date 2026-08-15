@@ -1,36 +1,46 @@
+.simulation-runtime-page{
+  min-width:0;
+  display:grid;
+  gap:8px;
+}
+
 .simulation-workspace-shell{
-  height:calc(100dvh - 142px);
-  min-height:560px;
-  display:flex;
-  flex-direction:column;
+  min-width:0;
+  display:grid;
+  gap:8px;
+}
+
+.simulation-workspace-shell>.simulation-page{
+  height:calc(100dvh - 158px);
+  min-height:580px;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
   gap:8px;
   overflow:hidden;
 }
 
-.simulation-workspace-shell>.player-combat-panel,
-.simulation-workspace-shell>.command-equipment-panel{
-  flex:0 0 auto;
-}
-
-.simulation-workspace-shell>.simulation-page{
-  flex:1 1 auto;
-  min-height:0;
-  overflow:hidden;
-}
-
 .simulation-workspace-shell .simulation-layout{
-  height:100%;
   min-height:0;
-  grid-template-columns:minmax(0,1fr) 272px;
+  height:100%;
+  grid-template-columns:minmax(0,1fr) 292px;
+  gap:10px;
+  align-items:stretch;
 }
 
 .simulation-workspace-shell .simulation-stage{
+  min-width:0;
   min-height:0;
+  height:100%;
+  display:grid;
+  grid-template-rows:minmax(0,1fr) auto;
   overflow:hidden;
 }
 
+.simulation-workspace-shell .simulation-combat-wrap,
 .simulation-workspace-shell .simulation-recovery-wrap,
 .simulation-workspace-shell .simulation-canvas-wrap{
+  min-width:0;
+  min-height:0;
   width:100%;
   height:100%;
 }
@@ -38,22 +48,78 @@
 .simulation-workspace-shell .simulation-canvas{
   width:100%;
   height:100%;
+  max-height:none;
   display:block;
 }
 
 .simulation-workspace-shell .simulation-sidebar{
   min-height:0;
   height:100%;
-  overflow:auto;
+  max-height:100%;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  align-content:start;
+  padding-right:4px;
 }
 
 .simulation-workspace-shell .simulation-toolbar{
-  padding:6px 0;
+  padding:4px 0;
 }
 
 .simulation-workspace-shell .map-help{
-  margin-top:4px;
   min-height:18px;
+  margin:0;
+  padding:6px 9px;
+}
+
+.simulation-secondary-details{
+  min-width:0;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#0d141c;
+  overflow:hidden;
+}
+
+.simulation-secondary-details>summary{
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:9px 12px;
+  color:#9eafbe;
+  cursor:pointer;
+  user-select:none;
+  list-style:none;
+}
+
+.simulation-secondary-details>summary::-webkit-details-marker{display:none}
+.simulation-secondary-details>summary::before{content:'▸';color:#61788d;font-size:10px;transition:transform 120ms ease}
+.simulation-secondary-details[open]>summary::before{transform:rotate(90deg)}
+.simulation-secondary-details>summary>span{margin-right:auto;font-size:10px;font-weight:700;letter-spacing:.02em}
+.simulation-secondary-details>summary>small{color:#718596;font-size:8px;text-align:right}
+.simulation-secondary-details[open]>summary{border-bottom:1px solid #22303d;background:#101923}
+
+.simulation-secondary-grid{
+  display:grid;
+  gap:10px;
+  padding:10px;
+}
+
+.simulation-secondary-grid-runtime{
+  grid-template-columns:minmax(280px,.68fr) minmax(0,1.32fr);
+  align-items:start;
+}
+
+.simulation-secondary-grid-test{
+  grid-template-columns:minmax(300px,.8fr) minmax(0,1.2fr);
+  align-items:start;
+}
+
+.simulation-secondary-grid>.surface{
+  margin:0;
+  height:100%;
 }
 
 .simulation-recovery-wrap{position:relative;line-height:0}
@@ -70,8 +136,43 @@
 .sim-recovery-banner rect{fill:#0a1118;fill-opacity:.94;stroke:#80bd99;stroke-width:1}
 .sim-recovery-banner text{fill:#a8d7b8;font-size:8px;font-weight:800}
 
-@media(max-width:980px){
-  .simulation-workspace-shell{height:auto;min-height:0;overflow:visible}
-  .simulation-workspace-shell .simulation-layout{height:auto;grid-template-columns:1fr}
-  .simulation-workspace-shell .simulation-sidebar{height:auto;overflow:visible}
+@media(max-width:1180px){
+  .simulation-workspace-shell>.simulation-page{
+    height:auto;
+    min-height:0;
+    display:block;
+    overflow:visible;
+  }
+  .simulation-workspace-shell .simulation-layout{
+    height:auto;
+    grid-template-columns:1fr;
+  }
+  .simulation-workspace-shell .simulation-stage{
+    height:auto;
+    display:block;
+  }
+  .simulation-workspace-shell .simulation-canvas{
+    height:auto;
+    max-height:calc(100vh - 190px);
+  }
+  .simulation-workspace-shell .simulation-sidebar{
+    height:auto;
+    max-height:560px;
+  }
+  .simulation-secondary-grid-runtime,
+  .simulation-secondary-grid-test{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(max-width:720px){
+  .simulation-secondary-details>summary{
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+  .simulation-secondary-details>summary>small{
+    width:100%;
+    padding-left:18px;
+    text-align:left;
+  }
 }
