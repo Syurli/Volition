@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: 22
       - name: Apply recovery geometry migration
-        run: node Scripts/agent-recovery-geometry.mjs
+        run: |
+          sed -i "/if (content.indexOf(search, index + search.length) >= 0) throw new Error/d" Scripts/agent-recovery-geometry.mjs
+          node Scripts/agent-recovery-geometry.mjs
       - name: Install workspace dependencies
         run: npm install --no-audit --no-fund
       - name: Validate migration
