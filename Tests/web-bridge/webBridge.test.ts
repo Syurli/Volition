@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { ActionIntent, ActionResult, TickContext } from '@volition/core';
-import type { KnownEnvelope, ProtocolTransport } from '@volition/protocol';
-import { VolitionWebBridge, type WebHostAdapter } from '@volition/web-bridge';
+import type { ActionIntent, ActionResult, TickContext } from '@willform/core';
+import type { KnownEnvelope, ProtocolTransport } from '@willform/protocol';
+import { WillformWebBridge, type WebHostAdapter } from '@willform/web-bridge';
 import {
   TACTICAL_WIZARD_AGENT_ID,
   createTacticalWizardReferenceRuntime,
   fixtureContext,
   fixtureStimuli,
   tacticalWizardProjectConfig,
-} from '@volition/example-tactical-wizard';
+} from '@willform/example-tactical-wizard';
 
 class MemoryTransport implements ProtocolTransport {
   public readonly id = 'memory-test';
@@ -32,7 +32,7 @@ const host: WebHostAdapter = {
 
 describe('generic Web Bridge', () => {
   it('loads every agent from a versioned portable config while runtime construction remains injected', async () => {
-    const bridge = new VolitionWebBridge(host, { telemetryEnabled: false });
+    const bridge = new WillformWebBridge(host, { telemetryEnabled: false });
     const factoryIds: string[] = [];
     const loaded = bridge.loadProjectConfig(tacticalWizardProjectConfig, (definition) => {
       factoryIds.push(definition.id);
@@ -48,7 +48,7 @@ describe('generic Web Bridge', () => {
   it('announces protocol identity/inventory and emits runtime snapshots without host-specific types', async () => {
     const transport = new MemoryTransport();
     const runtime = createTacticalWizardReferenceRuntime();
-    const bridge = new VolitionWebBridge(host, { transport });
+    const bridge = new WillformWebBridge(host, { transport });
     bridge.registerAgent(TACTICAL_WIZARD_AGENT_ID, runtime);
     await bridge.announce();
     await bridge.tick({ logicalTick: 0, deltaSeconds: 0, seed: 42 });
@@ -63,8 +63,8 @@ describe('generic Web Bridge', () => {
     const silentRuntime = createTacticalWizardReferenceRuntime();
     const visibleTransport = new MemoryTransport();
     const silentTransport = new MemoryTransport();
-    const visible = new VolitionWebBridge(host, { transport: visibleTransport, telemetryEnabled: true });
-    const silent = new VolitionWebBridge(host, { transport: silentTransport, telemetryEnabled: false });
+    const visible = new WillformWebBridge(host, { transport: visibleTransport, telemetryEnabled: true });
+    const silent = new WillformWebBridge(host, { transport: silentTransport, telemetryEnabled: false });
     visible.registerAgent(TACTICAL_WIZARD_AGENT_ID, visibleRuntime);
     silent.registerAgent(TACTICAL_WIZARD_AGENT_ID, silentRuntime);
     for (let logicalTick = 0; logicalTick <= 5; logicalTick += 1) {
@@ -79,7 +79,7 @@ describe('generic Web Bridge', () => {
   it('reset clears runtime state and disconnect only closes transport', async () => {
     const runtime = createTacticalWizardReferenceRuntime();
     const transport = new MemoryTransport();
-    const bridge = new VolitionWebBridge(host, { transport });
+    const bridge = new WillformWebBridge(host, { transport });
     bridge.registerAgent(TACTICAL_WIZARD_AGENT_ID, runtime);
     await bridge.tick({ logicalTick: 1, deltaSeconds: 1, seed: 42 });
     bridge.reset();

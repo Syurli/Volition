@@ -1,6 +1,6 @@
 # Workbench Projects & Simulation
 
-Volition Workbench 是 AI 项目的设计、模拟、调试、可视化与连接入口。Runtime Inspector 是其中一个页面，不再等同于整个 Workbench。
+Willform Workbench 是 AI 项目的设计、模拟、调试、可视化与连接入口。Runtime Inspector 是其中一个页面，不再等同于整个 Workbench。
 
 ```text
 Workbench
@@ -15,7 +15,7 @@ Workbench
 
 ## Project Model
 
-Workbench 以 Project 为第一层用户对象。第一阶段可携带文件为 `volition.project.json`。Built-in Example 来源于应用 bundle，用户可以复制为 Local Project 后编辑和导出。Browser Project Library 是本机工作副本，不是云数据库。
+Workbench 以 Project 为第一层用户对象。第一阶段可携带文件为 `willform.project.json`。Built-in Example 来源于应用 bundle，用户可以复制为 Local Project 后编辑和导出。Browser Project Library 是本机工作副本，不是云数据库。
 
 ## Tactical Wizard Built-in Example
 
@@ -23,7 +23,7 @@ Workbench 以 Project 为第一层用户对象。第一阶段可携带文件为 
 
 ## Simulation Host Boundary
 
-2D test map、grid occupancy、A*、LOS/FOV、hearing、movement、fire/search visual effects 和 Player test controls 都属于 Workbench Simulation Host，不进入 Portable Core。Volition 选择 Intent，Host 负责世界执行并提供新的 Context / Stimulus。
+2D test map、grid occupancy、A*、LOS/FOV、hearing、movement、fire/search visual effects 和 Player test controls 都属于 Workbench Simulation Host，不进入 Portable Core。Willform 选择 Intent，Host 负责世界执行并提供新的 Context / Stimulus。
 
 ## Target Information Privacy
 

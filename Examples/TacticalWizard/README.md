@@ -14,6 +14,6 @@ Patrol → Noise → Investigate → Visual Confirm → Engage
 
 - Context 不包含隐藏玩家的实时位置；
 - `visual_actor visible:false` 不携带 position；
-- noise 使用 Host 已解析的 perceived position，而不是 Volition 自己读取音频/世界对象；
+- noise 使用 Host 已解析的 perceived position，而不是 Willform 自己读取音频/世界对象；
 - Aim/Fire/Reload 只成为 Host action；
 - fixture 同时服务产品 Demo 与自动回归测试。

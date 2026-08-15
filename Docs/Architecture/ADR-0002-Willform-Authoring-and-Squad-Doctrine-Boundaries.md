@@ -1,16 +1,16 @@
-# ADR-0002：Volition Authoring Assets 与 Squad Doctrine 边界
+# ADR-0002：Willform Authoring Assets 与 Squad Doctrine 边界
 
 Status: Accepted for current Alpha slice  
 Date: 2026-08-12
 
 ## Context
 
-Volition（原规划中的 UDMBF 2.0）当前 Workbench 已经能够独立模拟、调试和可视化 Tactical Wizard AI，但两个问题开始暴露：
+Willform（原规划中的 UDMBF 2.0）当前 Workbench 已经能够独立模拟、调试和可视化 Tactical Wizard AI，但两个问题开始暴露：
 
 1. Tactical Wizard 小队战术逐渐直接堆叠在 Workbench Simulation Host 中，容易让产品退化成单一游戏的脚本器；
 2. Design 页面只编辑 `agents[0]` 的少量参数，无法表达原规划中的 Brain Supervisor、Reasoner、Action/Behavior Contract、Agent 与小队组合关系。
 
-本 ADR 将当前 Alpha 的编辑资产与运行边界重新对齐到 Volition 的长期定位：**Agent Decision & Behavior Framework**，而不是 Unreal / StateTree / Tactical Wizard 专用工具。
+本 ADR 将当前 Alpha 的编辑资产与运行边界重新对齐到 Willform 的长期定位：**Agent Decision & Behavior Framework**，而不是 Unreal / StateTree / Tactical Wizard 专用工具。
 
 ## Decision
 

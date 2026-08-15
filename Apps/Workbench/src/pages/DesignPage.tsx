@@ -6,16 +6,16 @@ import {
   type BrainSupervisorDefinition,
   type ReasonerDefinition,
   type SquadDefinition,
-  type VolitionProjectConfig,
-} from '@volition/schema';
+  type WillformProjectConfig,
+} from '@willform/schema';
 import type { Locale, Translate } from '../i18n';
 import { serializeWorkbenchProject, type WorkbenchProject } from '../projects';
 
 interface Props {
   readonly t: Translate;
   readonly locale: Locale;
-  readonly config: VolitionProjectConfig;
-  readonly setConfig: (config: VolitionProjectConfig) => void;
+  readonly config: WillformProjectConfig;
+  readonly setConfig: (config: WillformProjectConfig) => void;
   readonly project: WorkbenchProject;
   readonly onSave: () => void;
   readonly onReset: () => void;
@@ -76,11 +76,11 @@ export function DesignPage({ t, locale, config, setConfig, project, onSave, onRe
 
   const applyJson = () => {
     try {
-      const parsed = JSON.parse(jsonText) as VolitionProjectConfig; const result = validateProjectConfig(parsed);
+      const parsed = JSON.parse(jsonText) as WillformProjectConfig; const result = validateProjectConfig(parsed);
       setValidationMessage(result.valid ? L('Schema 有效。', 'Schema valid.') : result.issues.map((issue) => `${issue.path}: ${issue.message}`).join(' · ')); if (result.valid) setConfig(parsed);
     } catch (error) { setValidationMessage(error instanceof Error ? error.message : String(error)); }
   };
-  const exportProject = () => { const blob = new Blob([serializeWorkbenchProject({ ...project, config })], { type: 'application/json' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'volition.project.json'; anchor.click(); URL.revokeObjectURL(url); };
+  const exportProject = () => { const blob = new Blob([serializeWorkbenchProject({ ...project, config })], { type: 'application/json' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'willform.project.json'; anchor.click(); URL.revokeObjectURL(url); };
 
   const selected = selection ?? firstSelection(config);
   return <section className="page-stack design-page">
@@ -105,7 +105,7 @@ function AssetSection({ title, items, kind, selection, setSelection, draggableKi
   return <section className="asset-section"><h4>{title}<span>{items.length}</span></h4>{items.map((item) => <button key={item.id} className={selection?.kind === kind && selection.id === item.id ? 'asset-row active' : 'asset-row'} draggable={draggableKind !== null} onDragStart={(event) => draggableKind !== null && writeDrag(event, { kind: draggableKind, id: item.id })} onClick={() => setSelection({ kind, id: item.id })}><span>{item.label}</span>{item.meta && <small>{item.meta}</small>}</button>)}</section>;
 }
 
-function SquadEditor({ locale, squad, config, onUpdate, onAddAgent, onAssignBehavior, onReorder }: { readonly locale: Locale; readonly squad: SquadDefinition | undefined; readonly config: VolitionProjectConfig; readonly onUpdate: (update: (squad: SquadDefinition) => SquadDefinition) => void; readonly onAddAgent: (agentId: string) => void; readonly onAssignBehavior: (behaviorId: string) => void; readonly onReorder: (dragged: string, target: string) => void }) {
+function SquadEditor({ locale, squad, config, onUpdate, onAddAgent, onAssignBehavior, onReorder }: { readonly locale: Locale; readonly squad: SquadDefinition | undefined; readonly config: WillformProjectConfig; readonly onUpdate: (update: (squad: SquadDefinition) => SquadDefinition) => void; readonly onAddAgent: (agentId: string) => void; readonly onAssignBehavior: (behaviorId: string) => void; readonly onReorder: (dragged: string, target: string) => void }) {
   if (squad === undefined) return <EmptyDesign />; const L = (zh: string, en: string) => locale === 'zh-CN' ? zh : en;
   const behaviorMap = new Map((config.behaviors ?? []).map((entry) => [entry.id, entry]));
   const drop = (event: DragEvent, targetMemberId?: string) => { event.preventDefault(); const payload = readDrag(event); if (payload?.kind === 'agent') onAddAgent(payload.id); else if (payload?.kind === 'behavior') onAssignBehavior(payload.id); else if (payload?.kind === 'squad-member' && targetMemberId !== undefined && payload.squadId === squad.id) onReorder(payload.id, targetMemberId); };
@@ -115,7 +115,7 @@ function SquadEditor({ locale, squad, config, onUpdate, onAddAgent, onAssignBeha
   </div>;
 }
 
-function AgentEditor({ locale, agent, config, onUpdate, onAssignBehavior }: { readonly locale: Locale; readonly agent: AgentDefinition | undefined; readonly config: VolitionProjectConfig; readonly onUpdate: (update: (agent: AgentDefinition) => AgentDefinition) => void; readonly onAssignBehavior: (behaviorId: string) => void }) {
+function AgentEditor({ locale, agent, config, onUpdate, onAssignBehavior }: { readonly locale: Locale; readonly agent: AgentDefinition | undefined; readonly config: WillformProjectConfig; readonly onUpdate: (update: (agent: AgentDefinition) => AgentDefinition) => void; readonly onAssignBehavior: (behaviorId: string) => void }) {
   if (agent === undefined) return <EmptyDesign />; const L = (zh: string, en: string) => locale === 'zh-CN' ? zh : en; const behaviorMap = new Map((config.behaviors ?? []).map((entry) => [entry.id, entry]));
   const setMemory = (key: keyof AgentDefinition['memory'], value: number) => onUpdate((current) => ({ ...current, memory: { ...current.memory, [key]: value } }));
   const setScore = (key: string, value: number) => onUpdate((current) => ({ ...current, decisionPolicy: { ...current.decisionPolicy, config: { ...(current.decisionPolicy.config ?? {}), [key]: value } } }));
@@ -132,7 +132,7 @@ function BehaviorEditor({ locale, behavior, onUpdate }: { readonly locale: Local
   return <div className="typed-editor"><div className="typed-editor-title"><span className="asset-type">BEHAVIOR</span><input value={behavior.displayName} onChange={(event) => onUpdate((current) => ({ ...current, displayName: event.target.value }))} /><code>{behavior.id}</code></div><div className="editor-property-grid"><section className="property-panel"><label>{L('作用域', 'Scope')}<select value={behavior.scope} onChange={(event) => onUpdate((current) => ({ ...current, scope: event.target.value as BehaviorDefinition['scope'] }))}><option value="agent">agent</option><option value="squad">squad</option></select></label><label>Intent ID<input value={behavior.intentId ?? ''} onChange={(event) => onUpdate((current) => ({ ...current, intentId: event.target.value || undefined }))} /></label><label>Host Behavior Ref<input value={behavior.hostBehaviorRef} onChange={(event) => onUpdate((current) => ({ ...current, hostBehaviorRef: event.target.value }))} /></label></section><section className="property-panel"><label>{L('所需能力（逗号分隔）', 'Required capabilities (comma separated)')}<input value={behavior.requiredCapabilities.join(', ')} onChange={(event) => onUpdate((current) => ({ ...current, requiredCapabilities: splitList(event.target.value) }))} /></label><label>{L('说明', 'Description')}<textarea value={behavior.description ?? ''} onChange={(event) => onUpdate((current) => ({ ...current, description: event.target.value }))} /></label></section></div><section className="module-zone contract-zone"><strong>Action Contract</strong><p>{L('这里编辑的是可移植行为契约与 Host alias，不在 Workbench 中伪造引擎动作实现。', 'This edits the portable behavior contract and Host alias; engine action implementation stays behind the Bridge.')}</p></section></div>;
 }
 
-function SupervisorEditor({ locale, supervisor, config, onUpdate }: { readonly locale: Locale; readonly supervisor: BrainSupervisorDefinition | undefined; readonly config: VolitionProjectConfig; readonly onUpdate: (update: (supervisor: BrainSupervisorDefinition) => BrainSupervisorDefinition) => void }) {
+function SupervisorEditor({ locale, supervisor, config, onUpdate }: { readonly locale: Locale; readonly supervisor: BrainSupervisorDefinition | undefined; readonly config: WillformProjectConfig; readonly onUpdate: (update: (supervisor: BrainSupervisorDefinition) => BrainSupervisorDefinition) => void }) {
   if (supervisor === undefined) return <EmptyDesign />; const L = (zh: string, en: string) => locale === 'zh-CN' ? zh : en; const reasoners = new Map((config.reasoners ?? []).map((entry) => [entry.id, entry]));
   return <div className="typed-editor"><div className="typed-editor-title"><span className="asset-type">BRAIN SUPERVISOR</span><input value={supervisor.displayName} onChange={(event) => onUpdate((current) => ({ ...current, displayName: event.target.value }))} /><code>{supervisor.id}</code></div><label className="wide-field">{L('初始模式', 'Initial mode')}<select value={supervisor.initialMode} onChange={(event) => onUpdate((current) => ({ ...current, initialMode: event.target.value }))}>{supervisor.modes.map((mode) => <option key={mode.id} value={mode.id}>{mode.displayName}</option>)}</select></label><div className="supervisor-flow">{supervisor.modes.map((mode, index) => <div key={mode.id} className="mode-card"><small>MODE {index + 1}</small><strong>{mode.displayName}</strong><code>{mode.id}</code><div>{mode.reasonerIds.map((id) => <span key={id}>{reasoners.get(id)?.displayName ?? id}</span>)}</div></div>)}</div><p className="editor-note">{L('Supervisor 只负责认知模式接管；Reasoner 负责思考，Arbitrator 负责最终选择，Executor 负责执行。', 'Supervisor owns cognitive mode switching only; Reasoners think, the Arbitrator selects, and the Executor performs actions.')}</p></div>;
 }
@@ -144,10 +144,10 @@ function ReasonerEditor({ locale, reasoner, onUpdate }: { readonly locale: Local
 
 function EmptyDesign() { return <div className="empty-design"><span>◇</span><strong>Select an asset</strong></div>; }
 function Num({ label, value, step, onChange }: { readonly label: string; readonly value: number; readonly step: number; readonly onChange: (value: number) => void }) { return <label>{label}<input type="number" value={value} step={step} onChange={(event) => onChange(Number(event.target.value))} /></label>; }
-function firstSelection(config: VolitionProjectConfig): Selection | null { const squad = config.squads?.[0]; if (squad) return { kind: 'squad', id: squad.id }; const agent = config.agents[0]; return agent ? { kind: 'agent', id: agent.id } : null; }
-function selectionExists(config: VolitionProjectConfig, selection: Selection): boolean { if (selection.kind === 'agent') return config.agents.some((entry) => entry.id === selection.id); if (selection.kind === 'behavior') return (config.behaviors ?? []).some((entry) => entry.id === selection.id); if (selection.kind === 'squad') return (config.squads ?? []).some((entry) => entry.id === selection.id); if (selection.kind === 'supervisor') return (config.supervisors ?? []).some((entry) => entry.id === selection.id); return (config.reasoners ?? []).some((entry) => entry.id === selection.id); }
-function writeDrag(event: DragEvent, payload: DragPayload) { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-volition-asset', JSON.stringify(payload)); }
-function readDrag(event: DragEvent): DragPayload | null { try { const text = event.dataTransfer.getData('application/x-volition-asset'); return text ? JSON.parse(text) as DragPayload : null; } catch { return null; } }
+function firstSelection(config: WillformProjectConfig): Selection | null { const squad = config.squads?.[0]; if (squad) return { kind: 'squad', id: squad.id }; const agent = config.agents[0]; return agent ? { kind: 'agent', id: agent.id } : null; }
+function selectionExists(config: WillformProjectConfig, selection: Selection): boolean { if (selection.kind === 'agent') return config.agents.some((entry) => entry.id === selection.id); if (selection.kind === 'behavior') return (config.behaviors ?? []).some((entry) => entry.id === selection.id); if (selection.kind === 'squad') return (config.squads ?? []).some((entry) => entry.id === selection.id); if (selection.kind === 'supervisor') return (config.supervisors ?? []).some((entry) => entry.id === selection.id); return (config.reasoners ?? []).some((entry) => entry.id === selection.id); }
+function writeDrag(event: DragEvent, payload: DragPayload) { event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData('application/x-willform-asset', JSON.stringify(payload)); }
+function readDrag(event: DragEvent): DragPayload | null { try { const text = event.dataTransfer.getData('application/x-willform-asset'); return text ? JSON.parse(text) as DragPayload : null; } catch { return null; } }
 function unique<T>(values: readonly T[]): readonly T[] { return [...new Set(values)]; }
 function splitList(value: string): readonly string[] { return value.split(',').map((entry) => entry.trim()).filter(Boolean); }
 function nextId(prefix: string, existing: readonly string[]): string { let index = 1; let id = `${prefix}-${index}`; while (existing.includes(id)) { index += 1; id = `${prefix}-${index}`; } return id; }

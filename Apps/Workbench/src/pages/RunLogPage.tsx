@@ -23,7 +23,7 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
   const exportLog = () => {
     const compressed = compressRunLog(simulation.runLog);
     const payload = {
-      format: 'volition.run-log.v7',
+      format: 'willform.run-log.v7',
       generatedAt: new Date().toISOString(),
       project: 'tactical-wizard-reference',
       runtimeCommit: simulation.runtimeIdentity.commit,
@@ -102,7 +102,7 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `volition-run-T${simulation.logicalTick}-${Date.now()}.json`;
+    anchor.download = `willform-run-T${simulation.logicalTick}-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };

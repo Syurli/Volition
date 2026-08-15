@@ -1,6 +1,6 @@
-import { AgentRuntime, type ActionIntent, type ActionResult, type ContextSnapshot, type Stimulus, type TickContext } from '@volition/core';
-import { envelope, type KnownEnvelope, type ProtocolTransport } from '@volition/protocol';
-import { assertValidProjectConfig, type AgentDefinition } from '@volition/schema';
+import { AgentRuntime, type ActionIntent, type ActionResult, type ContextSnapshot, type Stimulus, type TickContext } from '@willform/core';
+import { envelope, type KnownEnvelope, type ProtocolTransport } from '@willform/protocol';
+import { assertValidProjectConfig, type AgentDefinition } from '@willform/schema';
 
 export interface WebHostAdapter {
   readonly projectId: string;
@@ -19,7 +19,7 @@ export interface WebBridgeOptions {
 export type AgentRuntimeFactory = (definition: AgentDefinition) => AgentRuntime;
 
 /** Generic Web Host bridge. It has no Tactical Wizard/Babylon/Jolt/Vlox knowledge. */
-export class VolitionWebBridge {
+export class WillformWebBridge {
   readonly #host: WebHostAdapter;
   readonly #agents = new Map<string, AgentRuntime>();
   readonly #pendingResults = new Map<string, ActionResult[]>();

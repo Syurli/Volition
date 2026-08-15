@@ -1,17 +1,17 @@
-# 能动 Volition
+# 能动 Willform
 
 > **Agent Decision & Behavior Framework**  
 > **A BAIGE Project**
 >
-> https://syurli.github.io/Volition/
+> https://syurli.github.io/Willform/
 
-**能动 Volition** 是百舸（BAIGE）体系下的跨引擎游戏 Agent 决策与行为框架。它以可移植的数据模型、配置格式与通信协议为中心，以独立浏览器 **Volition Workbench** 承担主要编辑、调试与可视化工作，再通过轻量 Bridge 接入不同游戏运行环境。
+**能动 Willform** 是百舸（BAIGE）体系下的跨引擎游戏 Agent 决策与行为框架。它以可移植的数据模型、配置格式与通信协议为中心，以独立浏览器 **Willform Workbench** 承担主要编辑、调试与可视化工作，再通过轻量 Bridge 接入不同游戏运行环境。
 
 核心理念：**Agency over scripting.**
 
 ## Current Reference Application
 
-Volition 的第一个真实 Reference Application 是 `Syurli/TWR_Dev` / 《战术巫师：裂隙突围》，首个 Reference Host 是 Web；Unreal Engine 是第二个重要生产验证 Host，用于证明 portable semantics 不依赖 TypeScript/Web。
+Willform 的第一个真实 Reference Application 是 `Syurli/TWR_Dev` / 《战术巫师：裂隙突围》，首个 Reference Host 是 Web；Unreal Engine 是第二个重要生产验证 Host，用于证明 portable semantics 不依赖 TypeScript/Web。
 
 ```text
 Tactical Wizard / Web
@@ -25,7 +25,7 @@ Unity / Godot
 
 ## Workbench = GitHub Pages Product
 
-Volition 不维护“宣传官网 + 另一套 localhost 编辑器”。GitHub Pages 直接发布 `Apps/Workbench` 的 production build，打开 Pages 即进入正式 Workbench。
+Willform 不维护“宣传官网 + 另一套 localhost 编辑器”。GitHub Pages 直接发布 `Apps/Workbench` 的 production build，打开 Pages 即进入正式 Workbench。
 
 无运行中的游戏实例时，Workbench 仍可打开 bundled Tactical Wizard deterministic demo、查看 portable config、Agent runtime snapshot 与 Decision Trace。
 
@@ -34,14 +34,14 @@ Volition 不维护“宣传官网 + 另一套 localhost 编辑器”。GitHub Pa
 ```text
                      Browser
               ┌────────────────────┐
-              │ Volition Workbench │
+              │ Willform Workbench │
               │ Edit / Inspect/Viz │
               └─────────┬──────────┘
                         │
               Schema / Live Protocol
                         │
       ┌─────────────────┴─────────────────┐
-      │        Portable Volition Layer     │
+      │        Portable Willform Layer     │
       │ Core / Schema / Protocol           │
       └─────────────────┬─────────────────┘
                         │
@@ -54,7 +54,7 @@ Volition 不维护“宣传官网 + 另一套 localhost 编辑器”。GitHub Pa
 ## Repository Structure
 
 ```text
-Volition/
+Willform/
 ├─ Apps/Workbench/
 ├─ Packages/Core/
 ├─ Packages/Schema/
@@ -74,7 +74,7 @@ Volition/
 
 `Context → Stimulus → Observation → Memory/Belief → Decision Candidates → Intent → Action → ActionResult → Trace`
 
-Decision API 保持可插拔。首版 Tactical Wizard fixture 使用 **Utility Decision + explicit behavior state**，但 Volition 不被永久定义为 Utility AI 框架。
+Decision API 保持可插拔。首版 Tactical Wizard fixture 使用 **Utility Decision + explicit behavior state**，但 Willform 不被永久定义为 Utility AI 框架。
 
 Scheduler / Request / Resource / Ownership、Squad/Director、GOAP、HTN、Behavior Tree 编辑器、LLM Planner、Mass/ECS 与网络复制均不进入第一纵向切片。
 
@@ -108,7 +108,7 @@ npm run pack:reference
 ## Naming
 
 - 中文名：**能动**
-- 英文名：**Volition**
+- 英文名：**Willform**
 - 技术定位：**Agent Decision & Behavior Framework**
 - 厂牌：**A BAIGE Project**
 

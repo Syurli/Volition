@@ -1,13 +1,13 @@
-# Volition Workbench
+# Willform Workbench
 
-Volition Workbench 是 **能动 Volition** 的正式浏览器产品界面，也是 Volition GitHub Pages 发布站点本体。
+Willform Workbench 是 **能动 Willform** 的正式浏览器产品界面，也是 Willform GitHub Pages 发布站点本体。
 
 ```text
 GitHub Pages
     ↓
 Apps/Workbench production build
     ↓
-Volition Workbench
+Willform Workbench
 ```
 
 不存在一套独立宣传官网再加另一套 localhost 编辑器。品牌、版本、文档入口、Demo 与 Runtime Inspector 都属于同一个 Workbench Shell。
@@ -52,7 +52,7 @@ Pages 不拥有游戏 AI runtime、authoritative state、用户项目数据库�
 
 ## Live Mode
 
-Workbench 通过版本化 Volition Protocol 与 Bridge 通信。Protocol 与 transport 解耦。
+Workbench 通过版本化 Willform Protocol 与 Bridge 通信。Protocol 与 transport 解耦。
 
 ### Pages production
 
@@ -66,7 +66,7 @@ Pages 由 HTTPS 提供。生产连接只应尝试浏览器安全上下文允许�
 
 ## Static Hosting Rules
 
-- Vite base path 通过构建环境配置，Pages 使用 `/Volition/`；
+- Vite base path 通过构建环境配置，Pages 使用 `/Willform/`；
 - 应用保持单页/无 history-router 服务端依赖，直接刷新不要求 SPA fallback；
 - 不硬编码 localhost API；
 - 不要求 SSR；

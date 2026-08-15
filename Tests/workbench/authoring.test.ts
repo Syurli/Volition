@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateProjectConfig } from '@volition/schema';
+import { validateProjectConfig } from '@willform/schema';
 import { localizedAssetName, localizedRole, localizedTactic } from '../../Apps/Workbench/src/assetLocalization';
 import { tacticalWizardWorkbenchConfig } from '../../Apps/Workbench/src/referenceProjectConfig';
 

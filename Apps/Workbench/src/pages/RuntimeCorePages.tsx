@@ -1,4 +1,4 @@
-import type { DecisionTrace } from '@volition/core';
+import type { DecisionTrace } from '@willform/core';
 import type { Locale, Translate } from '../i18n';
 import type { GridPoint } from '../simulation/navigation';
 import type { RecoveryTask, SimulationOverlaySettings, TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';

@@ -1,4 +1,4 @@
-# Volition Architecture Decisions
+# Willform Architecture Decisions
 
 该文件记录已经确定、会影响后续开发方向的高层决策。更复杂的设计成熟后可以迁移为独立 ADR 文件。
 
@@ -8,16 +8,16 @@
 
 **Status:** Accepted
 
-Volition 不作为 UDMBF 1.0 的原位升级继续开发。不继承旧命名、API、资产兼容与目录布局。
+Willform 不作为 UDMBF 1.0 的原位升级继续开发。不继承旧命名、API、资产兼容与目录布局。
 
 ---
 
-## D-002 — Product Name Is Volition / 能动
+## D-002 — Product Name Is Willform / 能动
 
 **Status:** Accepted
 
 - 中文：能动
-- 英文：Volition
+- 英文：Willform
 - Descriptor：Agent Decision & Behavior Framework
 - Attribution：A BAIGE Project
 
@@ -27,7 +27,7 @@ Volition 不作为 UDMBF 1.0 的原位升级继续开发。不继承旧命名、
 
 **Status:** Accepted
 
-Volition 的产品边界从第一天按跨引擎平台设计。首个真实 Reference Application / Reference Host 调整为 `Syurli/TWR_Dev` / Tactical Wizard 的 Web Host；Unreal Engine 保持第二个重要生产验证 Host，用于证明 portable contracts 与 runtime 不依赖 TypeScript/Web。
+Willform 的产品边界从第一天按跨引擎平台设计。首个真实 Reference Application / Reference Host 调整为 `Syurli/TWR_Dev` / Tactical Wizard 的 Web Host；Unreal Engine 保持第二个重要生产验证 Host，用于证明 portable contracts 与 runtime 不依赖 TypeScript/Web。
 
 ### Validation order
 
@@ -51,7 +51,7 @@ Additional Validation: Unity / Godot
 
 **Status:** Superseded by D-006
 
-早期初始化曾采用 `VolitionEditor → VolitionRuntime → VolitionCore` 的根目录 Unreal 插件布局。该布局会让仓库形态与产品定位冲突，因此不再作为平台架构。
+早期初始化曾采用 `WillformEditor → WillformRuntime → WillformCore` 的根目录 Unreal 插件布局。该布局会让仓库形态与产品定位冲突，因此不再作为平台架构。
 
 ---
 
@@ -67,11 +67,11 @@ Additional Validation: Unity / Godot
 
 **Status:** Accepted
 
-Volition 的主要编辑、调试和可视化体验位于独立浏览器 Workbench。引擎插件仅保留桥接、配置、宿主绑定、运行时适配和轻量连接入口。
+Willform 的主要编辑、调试和可视化体验位于独立浏览器 Workbench。引擎插件仅保留桥接、配置、宿主绑定、运行时适配和轻量连接入口。
 
 ### Consequences
 
-- 不在 Unreal / Unity / Godot 内分别维护完整 Volition 编辑器；
+- 不在 Unreal / Unity / Godot 内分别维护完整 Willform 编辑器；
 - Workbench 成为统一开发体验与 live debugging surface；
 - Bridge 可以有 Project Settings、连接状态、打开 Workbench 等必要轻量 UI；
 - Workbench 不作为 shipped game runtime 的强依赖。
@@ -111,7 +111,7 @@ Volition 的主要编辑、调试和可视化体验位于独立浏览器 Workben
 
 **Status:** Accepted
 
-`Apps/Workbench` 的 production build 本身就是 Volition GitHub Pages 发布站点。不得维护“宣传官网 + 另一个 localhost 编辑器”两套重复产品界面。
+`Apps/Workbench` 的 production build 本身就是 Willform GitHub Pages 发布站点。不得维护“宣传官网 + 另一个 localhost 编辑器”两套重复产品界面。
 
 ### Consequences
 
@@ -135,6 +135,6 @@ Volition 的主要编辑、调试和可视化体验位于独立浏览器 Workben
 - `Packages/Core`、`Packages/Schema`、`Packages/Protocol` 与 `Bridges/Web` 的首版 reference implementation 使用 TypeScript；
 - `Apps/Workbench` 使用 TypeScript + React + Vite；
 - 仓库只维护 npm lockfile，不并行引入 pnpm/yarn lockfile；
-- TypeScript 类型、模块组织和 Web runtime 不是 Volition 永久跨引擎语义；
+- TypeScript 类型、模块组织和 Web runtime 不是 Willform 永久跨引擎语义；
 - Unreal/C++ 后续必须能依据相同 contracts 独立实现，而不嵌入 TypeScript runtime；
 - Decision API 保持策略可插拔，Utility policy 只是 Tactical Wizard Slice 01 的首个实现。

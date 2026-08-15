@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRuntime, UtilityDecisionPolicy, type DecisionCandidate, type DecisionInput } from '@volition/core';
-import { assertValidProjectConfig } from '@volition/schema';
+import { AgentRuntime, UtilityDecisionPolicy, type DecisionCandidate, type DecisionInput } from '@willform/core';
+import { assertValidProjectConfig } from '@willform/schema';
 import {
   TACTICAL_WIZARD_AGENT_ID,
   fixtureContext,
   runTacticalWizardFixture,
   tacticalWizardProjectConfig,
-} from '@volition/example-tactical-wizard';
+} from '@willform/example-tactical-wizard';
 
 describe('Tactical Wizard Reference Slice 01', () => {
   it('validates the portable generic rifle fixture', () => {

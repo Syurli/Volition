@@ -1,6 +1,6 @@
-# Volition Unreal Bridge
+# Willform Unreal Bridge
 
-Unreal Engine 是 Volition 首个正式生产验证宿主，但本目录只是平台的 Unreal Bridge。
+Unreal Engine 是 Willform 首个正式生产验证宿主，但本目录只是平台的 Unreal Bridge。
 
 ## Scope
 
@@ -13,4 +13,4 @@ Unreal Engine 是 Volition 首个正式生产验证宿主，但本目录只是�
 
 完整 Agent 编辑器与 Debugger 不在 Unreal 插件中实现。
 
-插件入口：`VolitionUnreal.uplugin`。
+插件入口：`WillformUnreal.uplugin`。
