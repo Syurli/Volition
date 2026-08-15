@@ -31,3 +31,5 @@ jobs:
           git add Apps/Workbench/src/simulation/tacticalWizardRuntime.ts Tests/workbench/recoveryGeometryAndShotTrace.test.ts
           git commit -m "Fix solo recovery authority and deferred rescue"
           git push origin HEAD:agent/recovery-authority-solo-work2
+
+# Temporary migration workflow; excluded from the final production commit.
