@@ -2,7 +2,7 @@ import { TacticalWizardRuntime, type TacticalWizardSimulationState as RuntimeSta
 import { gridKey, hasLineOfSight, isWalkable, type GridPoint } from './navigation';
 import { tacticalWizardNavigationGrid, tacticalWizardTestMap } from './tacticalWizardTestMap';
 import { buildDirectionalSearchWaypoints, contactUncertaintyRadius, deriveEgressDirection } from './contactMemory';
-import type { ExecutionContract } from './tacticalWizardHierarchy';
+import { AMMO_CRITICAL, AMMO_PER_BURST, type ExecutionContract } from './tacticalWizardHierarchy';
 import { attentionLookTarget, scanAttention, type AttentionMode, type AttentionSample } from './attention';
 
 export * from './tacticalWizardRuntime';
@@ -168,6 +168,8 @@ const REPEATED_SHOT_INVESTIGATION_TICKS = 28;
 const BULLET_IMPACT_RADIUS = 3.2;
 const NEAR_MISS_RADIUS = 1.6;
 const THREAT_EVIDENCE_MEMORY_TICKS = 28;
+const THREAT_RESPONSE_REPLAN_COOLDOWN_TICKS = 10;
+const THREAT_GEOMETRY_SHIFT_DISTANCE = 3.5;
 const COMBAT_ALERT_MEMORY_TICKS = 56;
 const FRESH_LKP_FIRE_TICKS = 6;
 const LKP_VERIFY_RANGE = 8.5;
@@ -208,6 +210,9 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
   private threatEvidenceBearing: GridPoint | null = null;
   private threatEvidenceSector: GridPoint | null = null;
   private threatResponseEscalations = 0;
+  private lastThreatGeometryReplanTick = -999;
+  private committedPlanEvidenceSkips = 0;
+  private lastCommittedPlanEvidenceLogTick = -999;
 
   private contactEpisodeId = 0;
   private previousConfirmedContact: GridPoint | null = null;
@@ -293,7 +298,6 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     this.installLogisticsAdmissionGuard();
     this.installLocomotionHysteresis();
   }
-
 
   private installMovingAttentionScan(): void {
     const host = this.behaviorHost();
@@ -538,10 +542,24 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     if (newlyEscalated) {
       const activate = (host as unknown as { activateSquad?: () => void }).activateSquad;
       if (typeof activate === 'function') activate.call(host);
-    } else {
+      runtime.contracts.clear();
+    } else if (this.shouldReplanForGunfireEvidence(estimatedSector)) {
+      host.sharedLastKnownPosition = { ...estimatedSector };
       host.refreshTacticalPlan();
+      runtime.contracts.clear();
+      this.lastThreatGeometryReplanTick = host.logicalTick;
+    } else {
+      this.committedPlanEvidenceSkips += 1;
+      if (host.logicalTick - this.lastCommittedPlanEvidenceLogTick >= THREAT_RESPONSE_REPLAN_COOLDOWN_TICKS) {
+        this.lastCommittedPlanEvidenceLogTick = host.logicalTick;
+        host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire evidence updated threat awareness without replacing committed tactical geometry.', {
+          evidenceKind: kind,
+          tactic: host.tactic,
+          committedPlanEvidenceSkips: this.committedPlanEvidenceSkips,
+          responseCooldownTicks: THREAT_RESPONSE_REPLAN_COOLDOWN_TICKS,
+        });
+      }
     }
-    runtime.contracts.clear();
     if (newlyEscalated) this.threatResponseEscalations += 1;
     host.pushEvent(`T${host.logicalTick}: hostile rifle ${kind} evidence escalated the squad into combat.`);
     host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'alert', 'Hostile rifle evidence promoted through perception/contact into the fixed-hierarchy combat alert.', {
@@ -552,6 +570,20 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
       exactShooterPositionWithheld: true,
       alertEscalated: newlyEscalated,
     });
+  }
+
+  private shouldReplanForGunfireEvidence(estimatedSector: GridPoint): boolean {
+    const runtime = this.runtimeAccess();
+    const host = runtime.tacticalHost;
+    const living = host.members.filter((member) => (runtime.equipment.get(member.id)?.health ?? 0) > 0);
+    if (living.length === 0) return false;
+    const hasConfirmedVisual = living.some((member) => host.canSeePlayer(member));
+    if (hasConfirmedVisual) return false;
+    const committedPlanIntact = living.every((member) => member.tacticalTarget !== null);
+    if (!committedPlanIntact) return true;
+    if (host.logicalTick - this.lastThreatGeometryReplanTick < THREAT_RESPONSE_REPLAN_COOLDOWN_TICKS) return false;
+    if (host.sharedLastKnownPosition === null) return true;
+    return distance(host.sharedLastKnownPosition, estimatedSector) >= THREAT_GEOMETRY_SHIFT_DISTANCE;
   }
 
   private observeContactKnowledge(state: RuntimeState): void {
@@ -737,7 +769,9 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     const runtime = this.runtimeAccess();
     const living = state.agents.filter((agent) => (runtime.equipment.get(agent.id)?.health ?? 0) > 0);
     if (living.length === 0) return false;
-    const allDry = living.every((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) < 3);
+    const urgentAmmo = living.some((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) <= AMMO_CRITICAL);
+    if (urgentAmmo) return false;
+    const allDry = living.every((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) < AMMO_PER_BURST);
     if (allDry) return false;
     const livingIds = new Set(living.map((agent) => agent.id));
     const confirmedVisual = this.behaviorHost().members.some((member) => livingIds.has(member.id) && this.behaviorHost().canSeePlayer(member));
@@ -751,13 +785,14 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     const assignment = runtime.logistics;
     if (assignment === null || state.squad.alertState !== 'active') return;
     const living = state.agents.filter((agent) => agent.alive);
-    if (living.length > 0 && living.every((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) < 3)) return;
+    if (living.length > 0 && living.every((agent) => (runtime.equipment.get(agent.id)?.ammoRounds ?? 0) < AMMO_PER_BURST)) return;
     const agent = state.agents.find((entry) => entry.id === assignment.agentId);
     if (agent === undefined || !agent.alive) return;
     const equipment = runtime.equipment.get(agent.id);
     const ammo = equipment?.ammoRounds ?? 0;
+    if (ammo <= AMMO_CRITICAL) return;
     const directVisual = this.confirmedHostVisualIds(state).length > 0;
-    const ownsCriticalCombatRole = state.squad.suppressorId === agent.id || agent.targetVisible || ammo >= 3;
+    const ownsCriticalCombatRole = state.squad.suppressorId === agent.id || agent.targetVisible || ammo >= AMMO_PER_BURST;
     if (!directVisual || !ownsCriticalCombatRole) return;
     runtime.finishLogistics(`lower-priority logistics lease preempted by direct combat during ${phase}`);
     this.logisticsPreemptions += 1;
@@ -940,7 +975,6 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     return selected;
   }
 
-
   private attentionAnchor(member: ThreatHostMember): GridPoint | null {
     const investigation = this.activeInvestigation(this.behaviorHost().logicalTick);
     if (investigation !== null && this.investigationResponders(investigation).includes(member.id)) return { ...investigation.target };
@@ -1047,6 +1081,9 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
     this.threatEvidenceBearing = null;
     this.threatEvidenceSector = null;
     this.threatResponseEscalations = 0;
+    this.lastThreatGeometryReplanTick = -999;
+    this.committedPlanEvidenceSkips = 0;
+    this.lastCommittedPlanEvidenceLogTick = -999;
     this.contactEpisodeId = 0;
     this.previousConfirmedContact = null;
     this.lastConfirmedContact = null;
@@ -1084,7 +1121,9 @@ export class TacticalWizardSimulation extends TacticalWizardRuntime {
       visionRange: INTEGRATED_VISION_RANGE,
       freshLkpFireTicks: FRESH_LKP_FIRE_TICKS,
       lkpVerifyTicks: LKP_VERIFY_TICKS,
-      logisticsPolicy: 'direct_combat_above_logistics',
+      threatResponseReplanCooldownTicks: THREAT_RESPONSE_REPLAN_COOLDOWN_TICKS,
+      logisticsPolicy: 'direct_combat_above_logistics_except_critical_ammo',
+      criticalAmmoThreshold: AMMO_CRITICAL,
       versionOverlayPolicy: 'forbidden',
     });
   }
