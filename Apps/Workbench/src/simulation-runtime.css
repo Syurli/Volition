@@ -1,3 +1,4 @@
+/* Simulation is combat-first: keep the live viewport in the first screenful and move dense diagnostics below it. */
 .simulation-runtime-page{
   min-width:0;
   display:grid;
