@@ -59,19 +59,57 @@ describe('Tactical Wizard fixed-hierarchy behavior parity', () => {
     expect(state.contactTrack.egressDirection!.x).toBeGreaterThan(0.5);
   });
 
-  it('does not grant a field-resupply lease to an armed member while confirmed direct combat owns execution', () => {
+  it('keeps committed tactical geometry stable while repeated incoming-fire evidence arrives under confirmed contact', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setPlayerPosition({ x: 6, y: 2 })).toBe(true);
+    for (let index = 0; index < 4; index += 1) simulation.step();
+    const before = simulation.getState();
+    expect(before.squad.alertState).toBe('active');
+    expect(before.agents.some((agent) => agent.targetVisible)).toBe(true);
+    const targetsBefore = before.agents.map((agent) => ({ id: agent.id, target: agent.tacticalTarget }));
+    const plansBefore = before.runLog.filter((entry) => entry.event === 'plan' && entry.summary.includes('Tactical task plan committed')).length;
+
+    expect(simulation.playerFireAt({ x: 40, y: 30 })).toBe(true);
+    expect(simulation.playerFireAt({ x: 40, y: 30 })).toBe(true);
+    const after = simulation.getState();
+    const targetsAfter = after.agents.map((agent) => ({ id: agent.id, target: agent.tacticalTarget }));
+    const plansAfter = after.runLog.filter((entry) => entry.event === 'plan' && entry.summary.includes('Tactical task plan committed')).length;
+
+    expect(targetsAfter).toEqual(targetsBefore);
+    expect(plansAfter).toBe(plansBefore);
+    expect(after.runLog.some((entry) => entry.event === 'plan' && entry.summary.includes('without replacing committed tactical geometry'))).toBe(true);
+  });
+
+  it('lets critical ammunition override direct-combat logistics suspension and retain the resupply lease', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setPlayerPosition({ x: 6, y: 2 })).toBe(true);
     for (let index = 0; index < 4; index += 1) simulation.step();
     let state = simulation.getState();
     expect(state.squad.alertState).toBe('active');
     expect(state.agents.some((agent) => agent.targetVisible)).toBe(true);
+    const suppressedBefore = state.logisticsLifecycle.suppressedPlanningCalls;
 
     expect(simulation.setAgentEquipment('twr:rifle-squad:alpha', { ammoRounds: 12 })).toBe(true);
     for (let index = 0; index < 3; index += 1) simulation.step();
     state = simulation.getState();
+    expect(state.command.activeResupplyAgentId).toBe('twr:rifle-squad:alpha');
+    expect(state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')?.logisticsTask).toBe('resupply_ammo');
+    expect(state.logisticsLifecycle.state).toBe('assigned');
+    expect(state.logisticsLifecycle.suppressedPlanningCalls).toBe(suppressedBefore);
+    expect(state.combatAuthority.logisticsPreemptions).toBe(0);
+  });
+
+  it('still suppresses noncritical low-ammo resupply while confirmed direct combat owns execution', () => {
+    const simulation = new TacticalWizardSimulation();
+    expect(simulation.setPlayerPosition({ x: 6, y: 2 })).toBe(true);
+    for (let index = 0; index < 4; index += 1) simulation.step();
+    const before = simulation.getState();
+
+    expect(simulation.setAgentEquipment('twr:rifle-squad:alpha', { ammoRounds: 24 })).toBe(true);
+    for (let index = 0; index < 3; index += 1) simulation.step();
+    const state = simulation.getState();
     expect(state.command.activeResupplyAgentId).toBeNull();
     expect(state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')?.logisticsTask).toBe('none');
-    expect(state.logisticsLifecycle.suppressedPlanningCalls).toBeGreaterThan(0);
+    expect(state.logisticsLifecycle.suppressedPlanningCalls).toBeGreaterThan(before.logisticsLifecycle.suppressedPlanningCalls);
   });
 });
