@@ -1,6 +1,6 @@
 # Willform Architecture
 
-> Status: Platform architecture contract v0.2. 本文定义边界，不冻结具体实现语言。
+> Status: Platform architecture contract v0.3. 本文定义边界，不冻结具体实现语言。
 
 ## 1. Platform Layers
 
@@ -117,7 +117,7 @@ Protocol 与传输实现解耦。WebSocket 可以是首版默认 transport，但
 
 ## 5. Unreal Bridge
 
-Unreal 是首个生产验证环境，但位于 `Bridges/Unreal`，不是仓库根架构。
+Unreal 是重要生产验证环境，但位于 `Bridges/Unreal`，不是仓库根架构。
 
 初始模块建议：
 
@@ -130,7 +130,7 @@ StateTree 可以作为 Behavior Execution backend，通过 Unreal Bridge adapter
 
 ## 6. Unity / Godot / Web Bridges
 
-这些目录现在预留，以便从一开始验证命名和边界是否真正跨引擎。
+这些目录用于验证命名和边界是否真正跨引擎。
 
 第一阶段不要求功能对等，但新增共享 Schema/Protocol 时必须能够说明它们如何被这些 Bridge 理解，或者明确记录为什么暂时只能由某个 engine extension 表达。
 
@@ -138,21 +138,71 @@ StateTree 可以作为 Behavior Execution backend，通过 Unreal Bridge adapter
 
 ```text
 Agent
- ├─ Context
- ├─ Decision
- ├─ Intent
- ├─ Behavior
- ├─ Requests
- ├─ Resources
+ ├─ Context / Facts
+ ├─ Reasoners
+ ├─ Decision / Proposal
+ ├─ Intent / Plan
+ ├─ Commitment / Lease
+ ├─ Arbitration
+ ├─ Execution Contract
+ ├─ Requests / Resources
  └─ Scheduler
 ```
 
-- Decision：回答“当前更应该做什么”；
-- Intent：在决策与执行之间提供稳定表达；
-- Scheduler / Arbitration：回答“现在什么可以执行”；
-- Request / Resource / Ownership：处理竞争、排他和释放。
+- Reasoner：回答“哪些 Goal / Opportunity / Action Proposal 现在更值得考虑”；
+- Decision / Tactical Planning：把 Proposal 转换成可执行的计划语义；
+- Intent / Commitment：在决策与执行之间提供稳定表达，避免每帧抖动；
+- Scheduler / Arbitration：回答“现在谁有权执行”；
+- Request / Resource / Ownership：处理竞争、排他和释放；
+- Execution Contract：提供最终唯一的移动、武器或其他执行权限。
 
-## 8. Data Flow
+## 8. Tactical Wizard Fixed Hierarchy
+
+Tactical Wizard 是当前第一生产实验场，其运行链保持：
+
+```text
+Perception
+    ↓
+Authoritative Facts / Contact Knowledge
+    ↓
+Reasoners
+    ↓
+Tactical Planning / Spatial Solver
+    ↓
+Commitment / Lease
+    ↓
+Operational Arbitration
+    ↓
+Execution Contract
+    ↓
+Host
+```
+
+任何新 Reasoner 都不得创建第二套移动或武器 Authority。
+
+## 9. IAUS Utility Reasoner
+
+IAUS（Infinite-Axis-style Utility System）当前作为 **Reasoner / Tactical Opportunity Selector** 接入，而不是作为新的总控架构。
+
+首个生产用途是 Incoming-fire Pressure。IAUS 比较：
+
+- `trade_fire`；
+- `reposition`；
+- `flank`；
+- `regroup`；
+- 特定非人类思维下的 `assault`。
+
+其输入来自 Authoritative Facts、Combat Profile 和 Squad Capability。其输出只是 Proposal；之后仍然必须经过 Tactical Planner、Commitment / Lease、Operational Arbitration 与 Execution Contract。
+
+这条边界是硬约束：
+
+```text
+Utility Score ≠ Execution Authority
+```
+
+当前 IAUS 实现保留在 Tactical Wizard reference implementation 中，尚未提升为 `Packages/Core` 的永久 contract。Promotion 条件见 [`Architecture/IAUS_UTILITY_REASONER.md`](Architecture/IAUS_UTILITY_REASONER.md)。
+
+## 10. Data Flow
 
 ### Offline authoring
 
@@ -177,17 +227,19 @@ Workbench
    ↓ inspect / trace / optional dev command
 ```
 
-## 9. Open Questions
+## 11. Open Questions
 
-暂不在初始化阶段锁死：
+暂不锁死：
 
 - Core 的最终实现语言与跨语言分发方式；
 - portable artifact 的具体文件格式（JSON/二进制/混合）；
 - WebSocket、IPC 与远程连接的 transport 组合；
-- Decision Policy 的具体接口；
+- Reasoner portable API 的最终粒度；
+- IAUS 响应曲线何时提升为通用 Schema；
+- HTN / GOAP / Statechart Reasoner 的正式接入顺序；
 - Scheduler 的宿主粒度；
 - 网络复制边界；
 - Bridge capability negotiation 的细节；
 - Unity/Godot 首个可运行里程碑。
 
-这些问题通过端到端垂直切片和 ADR 决定。
+这些问题通过 Tactical Wizard 真实迭代和后续端到端垂直切片决定。

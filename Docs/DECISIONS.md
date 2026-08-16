@@ -134,7 +134,42 @@ Willform 的主要编辑、调试和可视化体验位于独立浏览器 Workben
 
 - `Packages/Core`、`Packages/Schema`、`Packages/Protocol` 与 `Bridges/Web` 的首版 reference implementation 使用 TypeScript；
 - `Apps/Workbench` 使用 TypeScript + React + Vite；
-- 仓库只维护 npm lockfile，不并行引入 pnpm/yarn lockfile；
 - TypeScript 类型、模块组织和 Web runtime 不是 Willform 永久跨引擎语义；
 - Unreal/C++ 后续必须能依据相同 contracts 独立实现，而不嵌入 TypeScript runtime；
-- Decision API 保持策略可插拔，Utility policy 只是 Tactical Wizard Slice 01 的首个实现。
+- Decision API 保持策略可插拔。
+
+---
+
+## D-011 — IAUS Is A Reasoner, Not A Replacement Runtime
+
+**Status:** Accepted for Tactical Wizard production validation
+
+IAUS（Infinite-Axis-style Utility System）纳入 Willform 的方式固定为 **Reasoner / Opportunity Selector**，不得取代已经验证的固定层级、Commitment、Lease、Operational Arbitration 或 Execution Contract。
+
+### Current production use
+
+Tactical Wizard 的 Incoming-fire Pressure 使用 IAUS 比较多个同时合理的战术机会：
+
+```text
+trade_fire
+reposition
+flank
+regroup / break contact
+assault (only where mindset permits)
+```
+
+### Hard rules
+
+- Utility Score 不等于 Execution Authority；
+- Hard Preconditions 必须先于 utility ranking 移除不可执行候选；
+- IAUS 赢家只产生 Proposal；
+- Proposal 仍由 Tactical Planner 生成几何和角色；
+- 已建立的 Commitment / Lease 不因下一帧 utility 分数变化自动失效；
+- Recovery、Reaction、Critical Logistics 等高优先级 Authority 继续由 Operational Arbitration 处理；
+- Tactical Wizard 的 `tactical_human / feral / machine` 思维差异必须保留，不得被同一套 utility 候选同质化。
+
+### Authoring rule
+
+首版 IAUS 参数仍放在 Tactical Wizard `extensions` 中。Workbench 可以编辑 Combat Profile 轴和候选倍率，并预览 response curve / utility result；在至少精英、普通士兵、非人类和第二个决策领域验证之前，不把这些字段冻结进通用 Schema。
+
+详细技术定义见 `Docs/Architecture/IAUS_UTILITY_REASONER.md`。

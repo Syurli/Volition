@@ -1,3 +1,4 @@
+import { evaluateIaus, type IausCandidateDefinition, type IausEvaluation } from './iausUtility';
 import { findPath, gridKey, hasLineOfSight, isWalkable, type GridPoint, type NavigationGrid } from './navigation';
 
 export type FirePressureBand = 'stable' | 'pressured' | 'suppressed' | 'pinned';
@@ -15,6 +16,11 @@ export interface PressureProfileLike {
   readonly holdGroundBias: number;
   readonly counterManeuverBias: number;
   readonly breakContactBias: number;
+  readonly utilityTradeFireWeight: number;
+  readonly utilityRepositionWeight: number;
+  readonly utilityFlankWeight: number;
+  readonly utilityRegroupWeight: number;
+  readonly utilityAssaultWeight: number;
 }
 
 export interface PressureProposalInput {
@@ -25,6 +31,7 @@ export interface PressureProposalInput {
   readonly pressuredCount: number;
   readonly currentTactic: string;
   readonly profile: PressureProfileLike;
+  /** Low-weight deterministic variation axis. It never bypasses hard preconditions or commitment. */
   readonly roll: number;
 }
 
@@ -32,6 +39,7 @@ export interface PressureResponseProposal {
   readonly action: PressureTacticalAction;
   readonly pressuredAgentId: string;
   readonly reason: string;
+  readonly utility: IausEvaluation<PressureTacticalAction>;
 }
 
 export interface PressureResponseLease {
@@ -95,34 +103,103 @@ export function localEffectForBand(band: FirePressureBand): PressureLocalEffect 
   return 'normal';
 }
 
+/**
+ * IAUS is deliberately used only to rank tactical opportunities. The selected
+ * proposal still has to become a committed response lease and then pass the
+ * existing operational arbitration / execution-contract path.
+ */
 export function choosePressureProposal(input: PressureProposalInput): PressureResponseProposal {
-  const { profile, band, livingCount, pressuredCount, currentTactic } = input;
-  const stableTactic = currentTactic === 'flank' || currentTactic === 'crossfire' || currentTactic === 'assault';
-  let action: PressureTacticalAction = 'reposition';
-
-  if (profile.mindset === 'feral') {
-    action = livingCount >= 2 && input.roll < profile.counterManeuverBias ? 'flank' : 'assault';
-  } else if (profile.mindset === 'machine') {
-    const hold = profile.holdGroundBias * profile.suppressionTolerance;
-    action = input.roll < hold ? 'trade_fire' : profile.repositionBias >= 0.45 ? 'reposition' : 'trade_fire';
-  } else if (band === 'pinned' && pressuredCount >= Math.max(2, Math.ceil(livingCount * 0.66))) {
-    action = profile.breakContactBias >= 0.45 ? 'regroup' : 'reposition';
-  } else if (stableTactic && band !== 'pinned') {
-    action = profile.holdGroundBias >= 0.45 ? 'trade_fire' : 'reposition';
-  } else {
-    const holdChance = profile.holdGroundBias * profile.aggression * (band === 'pinned' ? 0.18 : 0.4);
-    const counterChance = profile.counterManeuverBias * (livingCount >= 2 ? 0.45 : 0);
-    if (input.roll < holdChance) action = 'trade_fire';
-    else if (input.roll < holdChance + counterChance && livingCount >= 2) action = 'flank';
-    else if (band === 'pinned' && profile.breakContactBias > profile.repositionBias) action = 'regroup';
-    else action = 'reposition';
-  }
-
+  const utility = evaluatePressureUtilities(input);
+  const action = utility.selectedId ?? 'reposition';
   return {
     action,
     pressuredAgentId: input.pressuredAgentId,
-    reason: pressureReason(action, band, input.pressure, profile),
+    reason: pressureReason(action, input.band, input.pressure, input.profile, utility),
+    utility,
   };
+}
+
+export function evaluatePressureUtilities(input: PressureProposalInput): IausEvaluation<PressureTacticalAction> {
+  const { profile, band, livingCount, pressuredCount, currentTactic } = input;
+  const pressure = clamp01(input.pressure);
+  const bandValue = band === 'pinned' ? 1 : band === 'suppressed' ? 0.7 : band === 'pressured' ? 0.34 : 0;
+  const pressuredRatio = livingCount <= 0 ? 0 : clamp01(pressuredCount / livingCount);
+  const stableTactic = currentTactic === 'flank' || currentTactic === 'crossfire' || currentTactic === 'assault';
+  const maneuverCapacity = livingCount <= 1 ? 0 : clamp01((livingCount - pressuredCount) / Math.max(1, livingCount - 1));
+  const variation = (offset: number) => 0.75 + wrap01(input.roll + offset) * 0.25;
+  const tacticalHuman = profile.mindset === 'tactical_human';
+  const feral = profile.mindset === 'feral';
+  const machine = profile.mindset === 'machine';
+
+  const candidates: readonly IausCandidateDefinition<PressureTacticalAction>[] = [
+    {
+      id: 'trade_fire',
+      weight: profile.utilityTradeFireWeight,
+      available: tacticalHuman || machine,
+      unavailableReason: feral ? 'feral_mindset_uses_maneuver_or_closing' : undefined,
+      axes: [
+        axis('hold_ground', profile.holdGroundBias, 1.3, 'power', 1.1),
+        axis('aggression', profile.aggression, 0.75, 'linear'),
+        axis('suppression_tolerance', profile.suppressionTolerance, 0.65, 'linear'),
+        axis('pressure_survivability', pressure, 1.05, 'inverse', 1.25, 0.16),
+        axis('committed_geometry', stableTactic ? 1 : 0.45, 0.55, 'smoothstep', 1, 0.2),
+        axis('variation', variation(0.11), 0.08, 'linear'),
+      ],
+    },
+    {
+      id: 'reposition',
+      weight: profile.utilityRepositionWeight,
+      available: tacticalHuman || machine,
+      unavailableReason: feral ? 'feral_mindset_does_not_use_human_cover_reposition' : undefined,
+      axes: [
+        axis('reposition_bias', profile.repositionBias, 1.3, 'power', 1.05),
+        axis('pressure', 0.28 + pressure * 0.72, 1.2, 'smoothstep'),
+        axis('pressure_band', 0.3 + bandValue * 0.7, 0.8, 'linear'),
+        axis('geometry_release', stableTactic ? 0.52 : 1, 0.48, 'linear', 1, 0.25),
+        axis('variation', variation(0.37), 0.08, 'linear'),
+      ],
+    },
+    {
+      id: 'flank',
+      weight: profile.utilityFlankWeight,
+      available: livingCount >= 2 && (tacticalHuman || feral),
+      unavailableReason: livingCount < 2 ? 'requires_second_living_member' : machine ? 'machine_profile_does_not_counter_maneuver_under_fire' : undefined,
+      axes: [
+        axis('counter_maneuver', profile.counterManeuverBias, 1.35, 'power', 1.05),
+        axis('coordination', feral ? Math.max(0.45, profile.coordination) : profile.coordination, 0.8, 'linear'),
+        axis('maneuver_capacity', maneuverCapacity, 1.25, 'smoothstep', 1, 0.12),
+        axis('pressure_opportunity', 0.45 + pressure * 0.55, 0.62, 'smoothstep'),
+        axis('support_not_pinned', 0.3 + maneuverCapacity * 0.7, 0.75, 'linear', 1, 0.15),
+        axis('variation', variation(0.61), 0.08, 'linear'),
+      ],
+    },
+    {
+      id: 'regroup',
+      weight: profile.utilityRegroupWeight,
+      available: tacticalHuman,
+      unavailableReason: tacticalHuman ? undefined : 'only_human_doctrine_uses_break_contact_regroup',
+      axes: [
+        axis('break_contact', profile.breakContactBias, 1.35, 'power', 1.05),
+        axis('distributed_pressure', pressuredRatio, 1.45, 'smoothstep', 1, 0.08),
+        axis('pinned_evidence', 0.18 + bandValue * 0.82, 1.05, 'smoothstep'),
+        axis('risk_aversion', 0.28 + (1 - profile.aggression) * 0.72, 0.6, 'linear'),
+        axis('variation', variation(0.83), 0.08, 'linear'),
+      ],
+    },
+    {
+      id: 'assault',
+      weight: profile.utilityAssaultWeight,
+      available: feral,
+      unavailableReason: feral ? undefined : 'pressure_assault_is_reserved_for_feral_mindset',
+      axes: [
+        axis('aggression', profile.aggression, 1.35, 'power', 1.05),
+        axis('pressure_to_closing', 0.38 + pressure * 0.62, 1.05, 'smoothstep'),
+        axis('direct_closing_bias', 0.25 + (1 - profile.counterManeuverBias) * 0.75, 1.15, 'linear', 1, 0.12),
+        axis('variation', variation(0.47), 0.08, 'linear'),
+      ],
+    },
+  ];
+  return evaluateIaus(candidates);
 }
 
 export function selectUnderFireReposition(
@@ -185,19 +262,38 @@ export function deterministicPressureRoll(id: string, a: number, b: number): num
   return (hash >>> 0) / 4294967296;
 }
 
-function pressureReason(action: PressureTacticalAction, band: FirePressureBand, pressure: number, profile: PressureProfileLike): string {
+function pressureReason(action: PressureTacticalAction, band: FirePressureBand, pressure: number, profile: PressureProfileLike, evaluation: IausEvaluation<PressureTacticalAction>): string {
   const level = `${band} incoming-fire pressure ${pressure.toFixed(2)}`;
-  if (action === 'trade_fire') return `${level}; ${profile.id} deliberately holds the current geometry for a bounded exchange lease.`;
-  if (action === 'flank') return `${level}; the pressured firing line is held by support while one stable maneuver element commits to a flank.`;
-  if (action === 'reposition') return `${level}; the locally pressured member needs materially different cover geometry before resuming normal doctrine.`;
-  if (action === 'regroup') return `${level}; pressure is distributed across the element, so the squad contracts instead of repeatedly rotating exposed roles.`;
-  if (action === 'assault') return `${level}; ${profile.mindset} converts danger into aggressive closing rather than human cover discipline.`;
-  return level;
+  const ranking = evaluation.candidates
+    .filter((entry) => entry.available)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map((entry) => `${entry.candidateId}=${entry.score.toFixed(3)}`)
+    .join(', ');
+  const utility = `IAUS selected ${action}${ranking ? ` (${ranking})` : ''}`;
+  if (action === 'trade_fire') return `${level}; ${utility}; ${profile.id} deliberately holds the current geometry for a bounded exchange lease.`;
+  if (action === 'flank') return `${level}; ${utility}; the pressured firing line is held by support while one stable maneuver element commits to a flank.`;
+  if (action === 'reposition') return `${level}; ${utility}; the locally pressured member needs materially different cover geometry before resuming normal doctrine.`;
+  if (action === 'regroup') return `${level}; ${utility}; pressure is distributed across the element, so the squad contracts instead of repeatedly rotating exposed roles.`;
+  if (action === 'assault') return `${level}; ${utility}; ${profile.mindset} converts danger into aggressive closing rather than human cover discipline.`;
+  return `${level}; ${utility}`;
+}
+
+function axis(
+  id: string,
+  input: number,
+  weight: number,
+  kind: 'linear' | 'inverse' | 'smoothstep' | 'power' | 'threshold',
+  exponent = 1,
+  floor = 0.04,
+) {
+  return { id, input, weight, curve: { kind, exponent, floor } } as const;
 }
 
 function rounded(point: GridPoint): GridPoint { return { x: Math.round(point.x), y: Math.round(point.y) }; }
 function distance(a: GridPoint, b: GridPoint): number { return Math.hypot(a.x - b.x, a.y - b.y); }
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
+function wrap01(value: number): number { const wrapped = value % 1; return wrapped < 0 ? wrapped + 1 : wrapped; }
 
 function adjacentBlockedCount(grid: NavigationGrid, point: GridPoint): number {
   const neighbors = [

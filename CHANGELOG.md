@@ -11,10 +11,15 @@
 - 将主要编辑、调试与可视化职责迁移到 `Apps/Workbench` 的 browser-first 架构。
 - 建立 `Packages/Core`、`Packages/Schema`、`Packages/Protocol` 共享层。
 - 建立 Unreal、Unity、Godot、Web Bridge 边界。
-- Unreal 插件移动到 `Bridges/Unreal`，仅保留桥接与轻量配置/Editor integration 方向。
+- Tactical Wizard 的来火战术机会选择改为 **IAUS-style Utility Reasoner**：Utility 只产生 Proposal，不改变既有 Tactical Planning、Commitment/Lease、Operational Arbitration 与 Execution Contract 权威边界。
+- Tactical Wizard 现有敌人 Profile 的既定风格参数继续作为 IAUS 轴输入；新增候选权重默认保持中性，避免在启用 IAUS 时静默重写既有敌人风格。
+- Workbench 的 Tactical Wizard 设计页增加 IAUS 候选评分、响应轴预览与候选权重编辑，用于解释“为什么当前更值得换位/绕后/收缩/继续对枪”。
 
 ### Added
 
+- `Apps/Workbench/src/simulation/iausUtility.ts`
+- `Docs/Architecture/IAUS_UTILITY_REASONER.md`
+- `Tests/workbench/iausUtility.test.ts`
 - `Docs/WEB_WORKBENCH.md`
 - `Docs/REPOSITORY.md`
 

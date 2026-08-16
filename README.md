@@ -11,23 +11,67 @@
 
 ## Current Reference Application
 
-Willform 的第一个真实 Reference Application 是 `Syurli/TWR_Dev` / 《战术巫师：裂隙突围》，首个 Reference Host 是 Web；Unreal Engine 是第二个重要生产验证 Host，用于证明 portable semantics 不依赖 TypeScript/Web。
+Willform 当前优先以《战术巫师》作为真实生产实验场，而不是先建设一个脱离游戏需求的万能 AI 平台。已经在《战术巫师》里验证稳定的概念，再逐步抽象进入通用 Willform contracts。
 
 ```text
 Tactical Wizard / Web
         ↓
-Core / Schema / Protocol / Workbench / Trace
+Perception / Knowledge / Reasoners / Tactical Planning
+        ↓
+Commitment / Operational Arbitration / Execution Contract
+        ↓
+Workbench authoring + simulation + trace
         ↓
 Unreal production validation
         ↓
 Unity / Godot
 ```
 
+## Current AI Architecture
+
+Tactical Wizard 使用固定分层的混合式 Agent 架构，而不是单一 Utility AI：
+
+```text
+Perception
+    ↓
+Authoritative Facts / Contact Knowledge
+    ↓
+Reasoners
+    ↓
+Tactical Planning / Spatial Solvers
+    ↓
+Commitment / Lease
+    ↓
+Operational Arbitration
+    ↓
+Execution Contract
+    ↓
+Host
+```
+
+### IAUS Utility Reasoner
+
+IAUS（Infinite-Axis-style Utility System）已经作为首个正式战术 Opportunity Reasoner 接入《战术巫师》的来火压力决策。
+
+它负责比较诸如：
+
+- 继续对枪；
+- 换位；
+- 反机动 / 绕后；
+- 收缩 / 脱离；
+- 特定非人类思维下的强行突击。
+
+IAUS **只产生 Proposal**。它不会绕过现有 Tactical Commitment、Lease、Operational Arbitration 或 Execution Contract，因此不会把已恢复的战术连续性重新退化成“每帧选最高分动作”。
+
+Workbench 的 Tactical Wizard Design 页面可以直接调整 Combat Profile 与 IAUS 候选倍率，并实时预览候选分数、Hard Gate 与轴响应。
+
+详见 [`Docs/Architecture/IAUS_UTILITY_REASONER.md`](Docs/Architecture/IAUS_UTILITY_REASONER.md)。
+
 ## Workbench = GitHub Pages Product
 
 Willform 不维护“宣传官网 + 另一套 localhost 编辑器”。GitHub Pages 直接发布 `Apps/Workbench` 的 production build，打开 Pages 即进入正式 Workbench。
 
-无运行中的游戏实例时，Workbench 仍可打开 bundled Tactical Wizard deterministic demo、查看 portable config、Agent runtime snapshot 与 Decision Trace。
+无运行中的游戏实例时，Workbench 仍可运行 Tactical Wizard sandbox、编辑敌人 Profile、查看运行时状态、Decision Trace 与战术可视化。
 
 ## Product Shape
 
@@ -68,21 +112,15 @@ Willform/
 └─ Tests/
 ```
 
-## Reference Slice 01 Scope
+## Reasoner Direction
 
-首个 Portable Core 只实现支撑一个普通持枪 Agent 的最小闭环：
+Willform 不被定义为 Utility AI 框架。Utility / IAUS 是可组合 Reasoner 的第一种成熟实现，未来可以与 Statechart、HTN、GOAP、Rules 等并存；不同 Reasoner 的输出必须经过统一 Proposal、Commitment、Arbitration 与 Execution 语义。
 
-`Context → Stimulus → Observation → Memory/Belief → Decision Candidates → Intent → Action → ActionResult → Trace`
-
-Decision API 保持可插拔。首版 Tactical Wizard fixture 使用 **Utility Decision + explicit behavior state**，但 Willform 不被永久定义为 Utility AI 框架。
-
-Scheduler / Request / Resource / Ownership、Squad/Director、GOAP、HTN、Behavior Tree 编辑器、LLM Planner、Mass/ECS 与网络复制均不进入第一纵向切片。
+当前原则：**算法是工具箱，Authority / Commitment / Trace 才是共同运行边界。**
 
 ## Development
 
-Reference Slice 01 使用 npm workspaces + TypeScript；Workbench 使用 React + Vite，测试使用 Vitest。该技术栈是首个 **reference implementation**，不是未来 Unreal/C++、Unity 或 Godot 必须嵌入 TypeScript runtime 的产品约束。
-
-当前分支尚未提交 `package-lock.json`，因此使用已经由 CI 验证的安装命令：
+Reference implementation 使用 npm workspaces + TypeScript；Workbench 使用 React + Vite，测试使用 Vitest。该技术栈不是未来 Unreal/C++、Unity 或 Godot 必须嵌入 TypeScript runtime 的产品约束。
 
 ```bash
 npm install
@@ -90,7 +128,7 @@ npm run test
 npm run build
 ```
 
-参考包可用以下命令在本地生成，不要求 TWR 提交机器绝对路径依赖：
+参考包：
 
 ```bash
 npm run pack:reference
@@ -100,6 +138,7 @@ npm run pack:reference
 
 - [`Docs/PRODUCT.md`](Docs/PRODUCT.md)
 - [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md)
+- [`Docs/Architecture/IAUS_UTILITY_REASONER.md`](Docs/Architecture/IAUS_UTILITY_REASONER.md)
 - [`Docs/WEB_WORKBENCH.md`](Docs/WEB_WORKBENCH.md)
 - [`Docs/ROADMAP.md`](Docs/ROADMAP.md)
 - [`Docs/DECISIONS.md`](Docs/DECISIONS.md)
