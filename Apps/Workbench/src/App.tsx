@@ -4,11 +4,13 @@ import type { WillformProjectConfig } from '@willform/schema';
 import { createTranslator, detectLocale, type Locale, type MessageKey } from './i18n';
 import { duplicateAsLocal, loadLocalProjects, saveLocalProjects, tacticalWizardExampleProject, type WorkbenchProject } from './projects';
 import { ProjectHub, OverviewPage } from './pages/ProjectPages';
-import { DesignPage } from './pages/DesignWorkspacePage';
+import { TacticalWizardDesignPage as DesignPage } from './pages/TacticalWizardDesignPage';
 import { ConnectionPage, DebugPage, SimulationPage, VisualizationPage } from './pages/RuntimePages';
 import { RunLogPage } from './pages/RunLogPage';
 import type { GridPoint } from './simulation/navigation';
-import { TacticalWizardSimulation, type SimulationOverlaySettings, type TacticalWizardSimulationState } from './simulation/tacticalWizardSimulation';
+import type { SimulationOverlaySettings } from './simulation/tacticalWizardSimulation';
+import { TacticalWizardAdaptiveSimulation, type TacticalWizardAdaptiveState as TacticalWizardSimulationState } from './simulation/tacticalWizardAdaptive';
+import { tacticalWizardCombatProfileFromConfig } from './simulation/tacticalWizardProfiles';
 import {
   DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT,
   applyTacticalWizardTestLoadout,
@@ -52,6 +54,7 @@ export function App() {
     setTraceHistory([]);
     simulationRef.current.reset();
     applyTacticalWizardTestLoadout(simulationRef.current, testLoadout);
+    simulationRef.current.setCombatProfile(tacticalWizardCombatProfileFromConfig(config));
     setSimulation(simulationRef.current.getState());
   };
   const applyTestLoadout = (next: TacticalWizardTestLoadout) => {
@@ -62,8 +65,14 @@ export function App() {
     saveTestLoadout(normalized);
     simulationRef.current.reset();
     applyTacticalWizardTestLoadout(simulationRef.current, normalized);
+    simulationRef.current.setCombatProfile(tacticalWizardCombatProfileFromConfig(config));
     setSimulation(simulationRef.current.getState());
   };
+
+  useEffect(() => {
+    simulationRef.current.setCombatProfile(tacticalWizardCombatProfileFromConfig(config));
+    setSimulation(simulationRef.current.getState());
+  }, [config]);
 
   useEffect(() => {
     if (!playing) return;
@@ -106,6 +115,14 @@ export function App() {
       const delta = (event as CustomEvent<number>).detail;
       if (typeof delta === 'number' && delta !== 0) { simulationRef.current.cyclePlayerGrenade(delta); syncSimulation(); }
     };
+    const enemyToggle = (event: Event) => {
+      if (page !== 'simulation') return;
+      const enabled = (event as CustomEvent<boolean>).detail;
+      if (typeof enabled !== 'boolean') return;
+      simulationRef.current.setEnemiesEnabled(enabled);
+      if (!enabled) setPlaying(false);
+      syncSimulation();
+    };
     const movementTimer = window.setInterval(() => {
       if (page !== 'simulation') return;
       const direction = heldDirections.current.at(-1); if (direction === undefined) return;
@@ -118,6 +135,7 @@ export function App() {
     window.addEventListener('willform-sim-fire', fire as EventListener);
     window.addEventListener('willform-sim-grenade', throwGrenade as EventListener);
     window.addEventListener('willform-sim-cycle-grenade', cycleGrenade as EventListener);
+    window.addEventListener('willform-sim-enemies-enabled', enemyToggle as EventListener);
     return () => {
       window.clearInterval(movementTimer);
       heldDirections.current = [];
@@ -128,6 +146,7 @@ export function App() {
       window.removeEventListener('willform-sim-fire', fire as EventListener);
       window.removeEventListener('willform-sim-grenade', throwGrenade as EventListener);
       window.removeEventListener('willform-sim-cycle-grenade', cycleGrenade as EventListener);
+      window.removeEventListener('willform-sim-enemies-enabled', enemyToggle as EventListener);
     };
   }, [page]);
 
@@ -158,6 +177,6 @@ function appendTrace(history: readonly DecisionTrace[], trace: DecisionTrace): r
 function loadLocale(): Locale { if (typeof window !== 'undefined') { const saved = window.localStorage.getItem('willform.workbench.locale'); if (saved === 'zh-CN' || saved === 'en-US') return saved; } return detectLocale(); }
 function normalizeDirectionKey(key: string): string | null { const normalized = key.toLowerCase(); if (normalized === 'w' || key === 'ArrowUp') return 'up'; if (normalized === 's' || key === 'ArrowDown') return 'down'; if (normalized === 'a' || key === 'ArrowLeft') return 'left'; if (normalized === 'd' || key === 'ArrowRight') return 'right'; return null; }
 function directionDelta(direction: string): readonly [number, number] { switch (direction) { case 'up': return [0,-1]; case 'down': return [0,1]; case 'left': return [-1,0]; case 'right': return [1,0]; default: return [0,0]; } }
-function createConfiguredSimulation(loadout: TacticalWizardTestLoadout): TacticalWizardSimulation { const simulation = new TacticalWizardSimulation(); applyTacticalWizardTestLoadout(simulation, loadout); return simulation; }
+function createConfiguredSimulation(loadout: TacticalWizardTestLoadout): TacticalWizardAdaptiveSimulation { const simulation = new TacticalWizardAdaptiveSimulation(); applyTacticalWizardTestLoadout(simulation, loadout); simulation.setCombatProfile(tacticalWizardCombatProfileFromConfig(tacticalWizardExampleProject.config)); return simulation; }
 function loadTestLoadout(): TacticalWizardTestLoadout { if (typeof window === 'undefined') return DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT; try { const raw = window.localStorage.getItem(TEST_LOADOUT_STORAGE_KEY); return raw === null ? DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT : normalizeTacticalWizardTestLoadout(JSON.parse(raw) as Partial<TacticalWizardTestLoadout>); } catch { return DEFAULT_TACTICAL_WIZARD_TEST_LOADOUT; } }
 function saveTestLoadout(loadout: TacticalWizardTestLoadout): void { if (typeof window !== 'undefined') window.localStorage.setItem(TEST_LOADOUT_STORAGE_KEY, JSON.stringify(loadout)); }
