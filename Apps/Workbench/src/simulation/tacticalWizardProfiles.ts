@@ -12,6 +12,9 @@ export interface TacticalWizardCombatProfile {
   readonly flankBias: number;
   readonly repositionBias: number;
   readonly coordination: number;
+  readonly holdGroundBias: number;
+  readonly counterManeuverBias: number;
+  readonly breakContactBias: number;
 }
 
 export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfile[] = [
@@ -25,6 +28,9 @@ export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfi
     flankBias: 0.86,
     repositionBias: 0.78,
     coordination: 0.95,
+    holdGroundBias: 0.82,
+    counterManeuverBias: 0.9,
+    breakContactBias: 0.45,
   },
   {
     id: 'regular_infantry',
@@ -36,6 +42,9 @@ export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfi
     flankBias: 0.45,
     repositionBias: 0.66,
     coordination: 0.62,
+    holdGroundBias: 0.52,
+    counterManeuverBias: 0.58,
+    breakContactBias: 0.62,
   },
   {
     id: 'irregular_fighter',
@@ -47,6 +56,9 @@ export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfi
     flankBias: 0.22,
     repositionBias: 0.54,
     coordination: 0.26,
+    holdGroundBias: 0.28,
+    counterManeuverBias: 0.34,
+    breakContactBias: 0.78,
   },
   {
     id: 'feral_pack',
@@ -58,6 +70,9 @@ export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfi
     flankBias: 0.78,
     repositionBias: 0.9,
     coordination: 0.44,
+    holdGroundBias: 0.18,
+    counterManeuverBias: 0.9,
+    breakContactBias: 0.1,
   },
   {
     id: 'combat_machine',
@@ -69,6 +84,9 @@ export const TACTICAL_WIZARD_COMBAT_PROFILES: readonly TacticalWizardCombatProfi
     flankBias: 0.34,
     repositionBias: 0.42,
     coordination: 0.84,
+    holdGroundBias: 0.9,
+    counterManeuverBias: 0.42,
+    breakContactBias: 0.28,
   },
 ] as const;
 
@@ -89,6 +107,9 @@ export function tacticalWizardCombatProfileFromExtensions(extensions: WillformPr
     flankBias: numberField(raw.tacticalWizardFlankBias, preset.flankBias),
     repositionBias: numberField(raw.tacticalWizardRepositionBias, preset.repositionBias),
     coordination: numberField(raw.tacticalWizardCoordination, preset.coordination),
+    holdGroundBias: numberField(raw.tacticalWizardHoldGroundBias, preset.holdGroundBias),
+    counterManeuverBias: numberField(raw.tacticalWizardCounterManeuverBias, preset.counterManeuverBias),
+    breakContactBias: numberField(raw.tacticalWizardBreakContactBias, preset.breakContactBias),
     mindset: mindsetField(raw.tacticalWizardMindset, preset.mindset),
   };
 }
@@ -102,6 +123,9 @@ export function tacticalWizardProfileExtensions(profile: TacticalWizardCombatPro
     tacticalWizardFlankBias: profile.flankBias,
     tacticalWizardRepositionBias: profile.repositionBias,
     tacticalWizardCoordination: profile.coordination,
+    tacticalWizardHoldGroundBias: profile.holdGroundBias,
+    tacticalWizardCounterManeuverBias: profile.counterManeuverBias,
+    tacticalWizardBreakContactBias: profile.breakContactBias,
   };
 }
 

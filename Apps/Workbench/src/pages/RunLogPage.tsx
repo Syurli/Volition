@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import type { Locale } from '../i18n';
 import { localizedAssetName, localizedIntent, localizedRole, localizedTactic } from '../assetLocalization';
 import type { RunLogCategory, RunLogEntry } from '../simulation/tacticalWizardHostTypes';
-import type { TacticalWizardSimulationState } from '../simulation/tacticalWizardSimulation';
+import type { TacticalWizardAdaptiveState } from '../simulation/tacticalWizardAdaptive';
 import { compressRunLog } from '../simulation/runLogCompression';
 
-export function RunLogPage({ locale, simulation }: { readonly locale: Locale; readonly simulation: TacticalWizardSimulationState }) {
+export function RunLogPage({ locale, simulation }: { readonly locale: Locale; readonly simulation: TacticalWizardAdaptiveState }) {
   const L = (zh: string, en: string) => locale === 'zh-CN' ? zh : en;
   const [category, setCategory] = useState<'all' | RunLogCategory>('all');
   const [query, setQuery] = useState('');
@@ -55,6 +55,8 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
         threatAwareness: simulation.threatAwareness,
         contactTrack: simulation.contactTrack,
         perceptionIntegration: simulation.perceptionIntegration,
+        adaptiveCombat: simulation.adaptiveCombat,
+        dynamicWorld: simulation.dynamicWorld,
         runtimeIdentity: simulation.runtimeIdentity,
         executionAuthority: simulation.executionAuthority,
         combatAuthority: simulation.combatAuthority,
@@ -109,25 +111,17 @@ export function RunLogPage({ locale, simulation }: { readonly locale: Locale; re
 
   const reductionPercent = Math.round(compressionPreview.stats.reductionRatio * 100);
   return <section className="page-stack run-log-page">
-    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('固定战术层级运行时保留完整诊断缓冲；导出同时记录构建 Commit、语义 Runtime、行为修订号和每名代理的执行合同。后续复盘先校验 runtimeIdentity，再以 executionAuthority 为最终执行真相。', 'The fixed tactical hierarchy keeps the full diagnostic buffer and exports the build commit, semantic runtime, behavior revision, and each agent execution contract. Reviews verify runtimeIdentity first and use executionAuthority as the canonical execution truth.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
-    <div className="metric-grid"><LogMetric label={L('运行时 Commit', 'Runtime commit')} value={simulation.runtimeIdentity.commit.slice(0, 8)} /><LogMetric label={L('行为修订', 'Behavior revision')} value={simulation.runtimeIdentity.behaviorProfile} /><LogMetric label={L('运行时记录', 'Runtime entries')} value={simulation.runLog.length} /><LogMetric label={L('预计导出', 'Export entries')} value={compressionPreview.stats.exportedEntries} /><LogMetric label={L('条目压缩', 'Entry reduction')} value={`${reductionPercent}%`} /><LogMetric label={L('小队记录', 'Squad events')} value={squadEvents} /></div>
-    <section className="surface run-log-filter"><label>{L('类型', 'Category')}<select value={category} onChange={(event) => setCategory(event.target.value as 'all' | RunLogCategory)}><option value="all">{L('全部', 'All')}</option><option value="player">{L('玩家', 'Player')}</option><option value="squad">{L('小队代理', 'Squad')}</option><option value="agent">{L('士兵代理', 'Agent')}</option><option value="system">{L('系统', 'System')}</option></select></label><label>{L('搜索', 'Search')}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={L('代理、事件、战术、补给合同、执行所有权、救援…', 'agent, event, tactic, logistics lease, execution owner, recovery…')} /></label><span>{filtered.length} / {simulation.runLog.length} · {L('决策', 'decisions')} {agentDecisions} · {L('玩家', 'player')} {playerActions}</span></section>
+    <div className="section-heading"><div><h2>{L('运行日志', 'Run Log')}</h2><p>{L('固定战术层级运行时保留完整诊断缓冲；导出同时记录构建 Commit、执行合同、来火压力、方向、响应租约与动态世界修订。后续复盘可直接判断压力事实是否改变了谁的局部执行，以及是否获得了合法抢占权。', 'The fixed hierarchy keeps the full diagnostic buffer and now exports build identity, execution contracts, incoming-fire pressure, bearing, response leases and dynamic-world revision so reviews can see whether pressure changed local execution and whether a squad-level response legitimately acquired a lease.')}</p></div><button className="primary-button" onClick={exportLog}>⇩ {L('导出压缩日志', 'Export Compact Log')}</button></div>
+    <div className="metric-grid"><LogMetric label={L('运行时 Commit', 'Runtime commit')} value={simulation.runtimeIdentity.commit.slice(0, 8)} /><LogMetric label={L('行为修订', 'Behavior revision')} value={simulation.runtimeIdentity.behaviorProfile} /><LogMetric label={L('运行时记录', 'Runtime entries')} value={simulation.runLog.length} /><LogMetric label={L('预计导出', 'Export entries')} value={compressionPreview.stats.exportedEntries} /><LogMetric label={L('条目压缩', 'Entry reduction')} value={`${reductionPercent}%`} /><LogMetric label={L('压力响应', 'Pressure responses')} value={simulation.adaptiveCombat.pressureResponses} /></div>
+    <section className="surface run-log-filter"><label>{L('类型', 'Category')}<select value={category} onChange={(event) => setCategory(event.target.value as 'all' | RunLogCategory)}><option value="all">{L('全部', 'All')}</option><option value="player">{L('玩家', 'Player')}</option><option value="squad">{L('小队代理', 'Squad')}</option><option value="agent">{L('士兵代理', 'Agent')}</option><option value="system">{L('系统', 'System')}</option></select></label><label>{L('搜索', 'Search')}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={L('代理、压力、响应租约、战术、补给合同、执行所有权、救援…', 'agent, pressure, response lease, tactic, logistics lease, execution owner, recovery…')} /></label><span>{filtered.length} / {simulation.runLog.length} · {L('决策', 'decisions')} {agentDecisions} · {L('玩家', 'player')} {playerActions}</span></section>
     <section className="surface run-log-surface"><div className="run-log-table-head"><span>Tick</span><span>{L('主体', 'Actor')}</span><span>{L('事件', 'Event')}</span><span>{L('摘要', 'Summary')}</span><span>{L('数据', 'Data')}</span></div><div className="run-log-table-body">{filtered.slice().reverse().map((entry) => <LogRow key={entry.sequence} entry={entry} locale={locale} />)}</div></section>
   </section>;
 }
 
-function LogMetric({ label, value }: { readonly label: string; readonly value: number | string }) {
-  return <div className="metric-card"><small>{label}</small><strong>{value}</strong><span>session</span></div>;
-}
+function LogMetric({ label, value }: { readonly label: string; readonly value: number | string }) { return <div className="metric-card"><small>{label}</small><strong>{value}</strong><span>session</span></div>; }
 
 function LogRow({ entry, locale }: { readonly entry: RunLogEntry; readonly locale: Locale }) {
-  const actor = entry.actorId === 'player'
-    ? (locale === 'zh-CN' ? '玩家' : 'Player')
-    : entry.category === 'squad'
-      ? localizedAssetName(entry.actorId, entry.actorLabel, locale)
-      : entry.category === 'agent'
-        ? localizedAssetName(entry.actorId, entry.actorLabel, locale)
-        : entry.actorLabel;
+  const actor = entry.actorId === 'player' ? (locale === 'zh-CN' ? '玩家' : 'Player') : entry.category === 'squad' ? localizedAssetName(entry.actorId, entry.actorLabel, locale) : entry.category === 'agent' ? localizedAssetName(entry.actorId, entry.actorLabel, locale) : entry.actorLabel;
   const summary = localizeSummary(entry, locale);
   return <div className={`run-log-row cat-${entry.category}`}><code>T{entry.logicalTick}<small>{entry.timeSeconds.toFixed(2)}s</small></code><span><b>{actor}</b><small>{entry.category}</small></span><span className="event-pill">{entry.event}</span><p>{summary}</p><details><summary>{locale === 'zh-CN' ? '查看' : 'view'}</summary><pre>{JSON.stringify(entry.data, null, 2)}</pre></details></div>;
 }
@@ -136,9 +130,11 @@ function localizeSummary(entry: RunLogEntry, locale: Locale): string {
   if (locale !== 'zh-CN') return entry.summary;
   if (entry.summary.includes('Fixed tactical hierarchy')) return '固定战术层级运行时已启用：感知 → 接触记忆 → 战术规划 → 运行仲裁 → 执行合同 → Host。';
   if (entry.summary.includes('Fixed-hierarchy behavior parity runtime')) return `行为语义运行时已启用：${String(entry.data.behaviorProfile ?? 'unknown')} · ${String(entry.data.runtimeCommit ?? 'unknown').slice(0, 8)}。`;
+  if (entry.summary.includes('Incoming-fire response lease committed')) return `来火响应获得有界执行租约：${String(entry.data.action ?? 'unknown')}，普通后续枪声不会替换本轮几何。`;
+  if (entry.summary.includes('Incoming-fire response lease released')) return `来火响应租约释放：${String(entry.data.reason ?? 'unknown')}。`;
   if (entry.summary.includes('field resupply')) return '代理获得正式补给执行租约；补给完成前战术规划不再夺回其身体控制权。';
   if (entry.summary.includes('Recovery contract committed')) return '救援合同已原子提交；救援者与安全位由固定层级统一执行。';
-  if (entry.event === 'decision') return `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}：${localizedRole(String(entry.data.role ?? ''), locale)}，选择 ${localizedIntent(String(entry.data.intent ?? ''), locale)}；小队战术 ${localizedTactic(String(entry.data.tactic ?? ''), locale)}；弹药 ${String(entry.data.ammoRounds ?? '?')}（${String(entry.data.burstsRemaining ?? '?')} 个 burst）。`;
+  if (entry.event === 'decision') return `${localizedAssetName(entry.actorId, entry.actorLabel, locale)}：${localizedRole(String(entry.data.role ?? ''), locale)}，选择 ${localizedIntent(String(entry.data.intent ?? ''), locale)}；小队战术 ${localizedTactic(String(entry.data.tactic ?? ''), locale)}。`;
   if (entry.event === 'tactic') return `小队战术切换：${localizedTactic(String(entry.data.from ?? ''), locale)} → ${localizedTactic(String(entry.data.to ?? ''), locale)}。`;
   if (entry.event === 'roles') return entry.summary.includes('Fire-support') ? '战术规划将火力基点交给仍具备射击能力的成员。' : `小队为 ${localizedTactic(String(entry.data.tactic ?? ''), locale)} 重新分配成员职责。`;
   if (entry.event === 'player_move') return '玩家发生位移。';
