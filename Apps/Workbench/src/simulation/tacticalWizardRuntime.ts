@@ -1,4 +1,4 @@
-import { findPath, gridKey, hasLineOfSight, type GridPoint } from './navigation';
+import { findPath, gridKey, hasLineOfSight, isWalkable, type GridPoint } from './navigation';
 import { traceGridShot } from './combatTrace';
 import {
   RECOVERY_DEADLOCK_TICKS,
@@ -11,6 +11,7 @@ import {
   recoveryDecision,
   recoveryFireLaneClear,
   selectRecoveryGeometry,
+  selectRecoverySecurityPoint,
   type RecoverySafetyBand,
   type RecoverySafetyDecision,
 } from './recoverySafety';
@@ -519,6 +520,7 @@ export class TacticalWizardRuntime {
   advance(deltaSeconds: number): TacticalWizardSimulationState {
     const before = this.hostState();
     this.expireTransientState(before.logicalTick);
+    this.validateRecoveryContract(before);
     this.startRecoveryIfNeeded(before);
     this.completeLogisticsIfArrived(before);
     this.planLogistics(before);
@@ -530,6 +532,7 @@ export class TacticalWizardRuntime {
     const after = this.hostState();
     this.observeCommander(after, deltaSeconds);
     this.observeContact(after);
+    this.validateRecoveryContract(after);
     this.startRecoveryIfNeeded(after);
     this.evaluateRecoverySafety(after);
     this.executeRecoverySecurity(after);
@@ -835,6 +838,7 @@ export class TacticalWizardRuntime {
       } else if (this.reactions.get(agentId)?.kind === 'downed') this.reactions.delete(agentId);
     }
     const state = this.hostState();
+    this.validateRecoveryContract(state);
     this.startRecoveryIfNeeded(state);
     this.syncHostOperationalContext(state);
     return true;
@@ -1122,8 +1126,8 @@ export class TacticalWizardRuntime {
   private startRecoveryIfNeeded(state: TacticalHostState): void {
     if (state.logicalTick < this.recoveryAbortUntilTick) return;
     if (this.recoveryPlan !== null) {
-      if (this.isAlive(this.recoveryPlan.patientId)) this.recoveryPlan = null;
-      else return;
+      this.validateRecoveryContract(state);
+      if (this.recoveryPlan !== null) return;
     }
     const patient = state.agents.find((agent) => !this.isAlive(agent.id));
     if (patient === undefined) return;
@@ -1131,18 +1135,18 @@ export class TacticalWizardRuntime {
     const rescuer = living
       .filter((agent) => (this.equipment.get(agent.id)?.medkits ?? 0) > 0 && agent.id !== this.logistics?.agentId)
       .sort((left, right) => distance(left.position, patient.position) - distance(right.position, patient.position) || left.id.localeCompare(right.id, 'en'))[0]
-      ?? living.filter((agent) => (this.equipment.get(agent.id)?.medkits ?? 0) > 0).sort((left, right) => left.id.localeCompare(right.id, 'en'))[0];
+      ?? living.filter((agent) => (this.equipment.get(agent.id)?.medkits ?? 0) > 0).sort((left, right) => distance(left.position, patient.position) - distance(right.position, patient.position) || left.id.localeCompare(right.id, 'en'))[0];
     if (rescuer === undefined) return;
-    const coverer = living
-      .filter((agent) => agent.id !== rescuer.id && agent.id !== this.logistics?.agentId && (this.equipment.get(agent.id)?.ammoRounds ?? 0) >= AMMO_PER_BURST)
-      .sort((left, right) => Number(right.targetVisible) - Number(left.targetVisible) || right.id.localeCompare(left.id, 'en'))[0]
-      ?? living.filter((agent) => agent.id !== rescuer.id && agent.id !== this.logistics?.agentId).sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
-      ?? null;
+    if (this.logistics?.agentId === rescuer.id) this.finishLogistics('recovery preempted the only medically capable member');
+    const coverer = this.selectRecoveryCoverer(living, rescuer.id);
+    if (coverer !== null && this.logistics?.agentId === coverer.id) this.finishLogistics('recovery security preempted logistics');
+    this.recoveryFailedSecurityPoints.clear();
+    this.recoveryFailedTreatmentPoints.clear();
     this.recoveryPlan = {
       patientId: patient.id,
       rescuerId: rescuer.id,
       covererId: coverer?.id ?? null,
-      phase: 'establish_cover',
+      phase: coverer === null ? 'approach' : 'establish_cover',
       startedTick: state.logicalTick,
       treatmentProgress: 0,
       stagePoint: { ...rescuer.position },
@@ -1170,9 +1174,124 @@ export class TacticalWizardRuntime {
     this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery contract committed atomically through the fixed hierarchy.', { patientId: patient.id, rescuerId: rescuer.id, covererId: coverer?.id ?? null });
   }
 
-  private progressRecovery(state: TacticalHostState, deltaSeconds: number): void {
+  private validateRecoveryContract(state: TacticalHostState): boolean {
+    const plan = this.recoveryPlan;
+    if (plan === null) return false;
+    const patient = state.agents.find((agent) => agent.id === plan.patientId);
+    if (patient === undefined || this.isAlive(plan.patientId)) {
+      this.releaseRecoveryOwnership(state, 'patient no longer requires recovery');
+      return false;
+    }
+    const living = state.agents.filter((agent) => this.isAlive(agent.id));
+    if (living.length === 0) {
+      this.releaseRecoveryOwnership(state, 'no_living_rescuer');
+      return false;
+    }
+    const rescuerEquipment = this.equipment.get(plan.rescuerId);
+    const rescuerValid = this.isAlive(plan.rescuerId) && (rescuerEquipment?.medkits ?? 0) > 0;
+    if (!rescuerValid) {
+      const replacement = living
+        .filter((agent) => (this.equipment.get(agent.id)?.medkits ?? 0) > 0 && agent.id !== this.logistics?.agentId)
+        .sort((left, right) => distance(left.position, patient.position) - distance(right.position, patient.position) || left.id.localeCompare(right.id, 'en'))[0]
+        ?? living.filter((agent) => (this.equipment.get(agent.id)?.medkits ?? 0) > 0).sort((left, right) => distance(left.position, patient.position) - distance(right.position, patient.position) || left.id.localeCompare(right.id, 'en'))[0];
+      if (replacement === undefined) {
+        this.releaseRecoveryOwnership(state, 'no_capable_rescuer');
+        return false;
+      }
+      const previousRescuerId = plan.rescuerId;
+      const previousCovererId = plan.covererId;
+      if (this.logistics?.agentId === replacement.id) this.finishLogistics('recovery owner reassignment preempted logistics');
+      plan.rescuerId = replacement.id;
+      const coverer = this.selectRecoveryCoverer(living, replacement.id);
+      plan.covererId = coverer?.id ?? null;
+      if (coverer !== null && this.logistics?.agentId === coverer.id) this.finishLogistics('recovery security reassignment preempted logistics');
+      plan.phase = coverer === null ? 'approach' : 'establish_cover';
+      plan.stalledTicks = 0;
+      plan.stallReplans = 0;
+      plan.lastProgressTick = state.logicalTick;
+      plan.lastRescuerDistance = distance(replacement.position, plan.treatmentPoint);
+      this.resetRecoverySafetyForOwnerChange();
+      this.contracts.delete(previousRescuerId);
+      if (previousCovererId !== null) this.contracts.delete(previousCovererId);
+      this.contracts.delete(replacement.id);
+      if (plan.covererId !== null) this.contracts.delete(plan.covererId);
+      this.replanRecoveryGeometry(state, 'rescuer_reassigned_after_invalidation', false);
+      this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'roles', 'Recovery ownership changed before Safety evaluation because the previous rescuer became invalid.', {
+        patientId: plan.patientId,
+        previousRescuerId,
+        rescuerId: replacement.id,
+        covererId: plan.covererId,
+        treatmentProgressPreserved: Number(plan.treatmentProgress.toFixed(3)),
+      });
+      return true;
+    }
+    if (plan.covererId !== null && (!this.isAlive(plan.covererId) || plan.covererId === plan.rescuerId)) {
+      const previousCovererId = plan.covererId;
+      const replacementCoverer = this.selectRecoveryCoverer(living, plan.rescuerId);
+      plan.covererId = replacementCoverer?.id ?? null;
+      plan.securityPoint = null;
+      plan.phase = plan.covererId === null ? 'approach' : 'establish_cover';
+      this.contracts.delete(previousCovererId);
+      if (plan.covererId !== null) this.contracts.delete(plan.covererId);
+      this.recoveryIneffectiveSinceTick = null;
+      this.replanRecoveryGeometry(state, plan.covererId === null ? 'security_became_downed_switch_to_solo' : 'security_owner_reassigned', false);
+      this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'roles', 'Recovery security ownership was repaired before Safety evaluation.', {
+        patientId: plan.patientId,
+        rescuerId: plan.rescuerId,
+        previousCovererId,
+        covererId: plan.covererId,
+      });
+    }
+    return true;
+  }
+
+  private selectRecoveryCoverer(living: readonly TacticalHostAgentView[], rescuerId: string): TacticalHostAgentView | null {
+    const available = living.filter((agent) => agent.id !== rescuerId);
+    return available
+      .filter((agent) => agent.id !== this.logistics?.agentId && (this.equipment.get(agent.id)?.ammoRounds ?? 0) >= AMMO_PER_BURST)
+      .sort((left, right) => Number(right.targetVisible) - Number(left.targetVisible) || right.id.localeCompare(left.id, 'en'))[0]
+      ?? available.filter((agent) => agent.id !== this.logistics?.agentId).sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
+      ?? available.sort((left, right) => left.id.localeCompare(right.id, 'en'))[0]
+      ?? null;
+  }
+
+  private resetRecoverySafetyForOwnerChange(): void {
+    this.recoveryPressure = Math.min(this.recoveryPressure, 0.35);
+    this.recoverySafetyBand = classifyRecoveryPressure(this.recoveryPressure);
+    this.recoverySafetyDecision = 'continue';
+    this.recoveryDeferredUntilTick = -1;
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
+    this.recoveryUnsafeSinceTick = null;
+    this.recoveryIneffectiveSinceTick = null;
+  }
+
+  private releaseRecoveryOwnership(state: TacticalHostState, reason: string): void {
     const plan = this.recoveryPlan;
     if (plan === null) return;
+    const released = { patientId: plan.patientId, rescuerId: plan.rescuerId, covererId: plan.covererId };
+    this.recoveryPlan = null;
+    this.recoveryDeferredUntilTick = -1;
+    this.recoverySafetyDecision = 'none';
+    this.recoverySafetyBand = 'stable';
+    this.recoveryPauseReason = null;
+    this.recoveryWatchdogState = 'idle';
+    this.recoveryUnsafeSinceTick = null;
+    this.recoveryIneffectiveSinceTick = null;
+    this.recoveryFailedSecurityPoints.clear();
+    this.recoveryFailedTreatmentPoints.clear();
+    this.contracts.delete(released.rescuerId);
+    if (released.covererId !== null) this.contracts.delete(released.covererId);
+    this.syncHostOperationalContext(state);
+    this.hostAccess().applyRoles();
+    this.hostAccess().refreshTacticalPlan();
+    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery execution ownership released because its contract invariant could no longer be satisfied.', { ...released, reason });
+  }
+
+  private progressRecovery(state: TacticalHostState, deltaSeconds: number): void {
+    if (this.recoveryPlan === null) return;
+    if (!this.validateRecoveryContract(state) || this.recoveryPlan === null) return;
+    const plan = this.recoveryPlan;
     if (this.recoverySafetyDecision === 'abort') {
       this.deferRecovery(state, 'recovery safety authority deferred an unsafe rescue');
       return;
@@ -1181,15 +1300,10 @@ export class TacticalWizardRuntime {
     const patient = state.agents.find((agent) => agent.id === plan.patientId);
     const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
     const equipment = this.equipment.get(plan.rescuerId);
-    if (patient === undefined || rescuer === undefined || equipment === undefined || !this.isAlive(rescuer.id) || equipment.medkits <= 0) {
-      this.recoveryPlan = null;
-      this.startRecoveryIfNeeded(state);
-      return;
-    }
+    if (patient === undefined || rescuer === undefined || equipment === undefined) return;
     if (plan.phase === 'establish_cover') {
-      if (plan.covererId === null) {
-        plan.phase = 'approach';
-      } else {
+      if (plan.covererId === null) plan.phase = 'approach';
+      else {
         const coverer = state.agents.find((agent) => agent.id === plan.covererId);
         const securityReady = coverer !== undefined && plan.securityPoint !== null && distance(coverer.position, plan.securityPoint) <= RECOVERY_SECURITY_ARRIVAL;
         if (securityReady) plan.phase = 'approach';
@@ -1203,7 +1317,6 @@ export class TacticalWizardRuntime {
     }
     if (treatmentRange > 0.85 || distance(plan.treatmentPoint, patient.position) > RECOVERY_RANGE) {
       plan.phase = 'approach';
-      plan.treatmentProgress = 0;
       return;
     }
     plan.treatmentProgress = Math.min(1, plan.treatmentProgress + Math.max(0, deltaSeconds) / RECOVERY_SECONDS);
@@ -1218,6 +1331,8 @@ export class TacticalWizardRuntime {
     this.recoveryWatchdogState = 'idle';
     this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery treatment completed; restored member returns to Tactical Planning.', { patientId: plan.patientId, rescuerId: plan.rescuerId, restoredHealth: patientEquipment.health });
     this.recoveryPlan = null;
+    this.recoveryFailedSecurityPoints.clear();
+    this.recoveryFailedTreatmentPoints.clear();
     this.syncHostOperationalContext(this.hostState());
     this.hostAccess().applyRoles();
     this.hostAccess().refreshTacticalPlan();
@@ -1229,7 +1344,11 @@ export class TacticalWizardRuntime {
     const patient = state.agents.find((agent) => agent.id === plan.patientId);
     if (agentId === plan.rescuerId) {
       if (this.recoverySafetyDecision === 'reposition') return { role: 'rescuer', target: clonePoint(plan.fallbackPoint), patientId: plan.patientId };
-      if (this.recoverySafetyDecision === 'pause') return { role: 'rescuer', target: null, patientId: plan.patientId };
+      if (this.recoverySafetyDecision === 'pause') {
+        const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
+        const fallback = rescuer !== undefined && distance(rescuer.position, plan.fallbackPoint) > 0.75 ? clonePoint(plan.fallbackPoint) : null;
+        return { role: 'rescuer', target: fallback, patientId: plan.patientId };
+      }
       if (plan.phase === 'establish_cover') return { role: 'rescuer', target: clonePoint(plan.approachPoint), patientId: plan.patientId };
       return { role: 'rescuer', target: clonePoint(plan.treatmentPoint), patientId: plan.patientId };
     }
@@ -1279,6 +1398,7 @@ export class TacticalWizardRuntime {
       this.recoveryIneffectiveSinceTick = null;
       return;
     }
+    if (!this.validateRecoveryContract(state) || this.recoveryPlan === null) return;
     if (this.recoveryLastEvaluatedTick === state.logicalTick) return;
     this.recoveryLastEvaluatedTick = state.logicalTick;
     this.recoveryPressure = Math.max(0, this.recoveryPressure - 0.055);
@@ -1301,6 +1421,10 @@ export class TacticalWizardRuntime {
 
     const threatFact = this.recoveryThreatFact(state);
     const threat = threatFact.point;
+    const safeTreatmentGeometry = !plan.treatmentExposed && plan.pathExposureCells === 0;
+    if (safeTreatmentGeometry && rescuer !== undefined && distance(rescuer.position, plan.treatmentPoint) <= 1.1 && (threatFact.source === 'none' || (threatFact.ageTicks ?? 0) >= 2)) {
+      this.recoveryPressure = Math.max(0, this.recoveryPressure - 0.12);
+    }
     const weaponReady = security !== null && (this.equipment.get(security.id)?.ammoRounds ?? 0) >= RECOVERY_WEAPON_READY_ROUNDS;
     const positionReady = security !== null && plan.securityPoint !== null && distance(security.position, plan.securityPoint) <= RECOVERY_SECURITY_ARRIVAL;
     const lineOfSightReady = security !== null && (threat === null ? security.targetVisible : hasLineOfSight(tacticalWizardNavigationGrid, navCell(security.position), navCell(threat)));
@@ -1336,7 +1460,7 @@ export class TacticalWizardRuntime {
 
     let nextDecision = recoveryDecision(this.recoverySafetyBand, unsafeTicks);
     if (this.recoverySafetyBand === 'pressured' && threat === null) nextDecision = 'continue';
-    else if (this.recoverySafetyBand === 'pressured' && plan.phase === 'approach' && !plan.treatmentExposed && plan.pathExposureCells === 0) nextDecision = 'continue';
+    else if (this.recoverySafetyBand === 'pressured' && safeTreatmentGeometry && (security === null || !securityIneffective)) nextDecision = 'continue';
 
     if (nextDecision === 'reposition' && this.recoverySafetyDecision !== 'reposition') {
       this.rescueInterruptedCount += 1;
@@ -1392,22 +1516,54 @@ export class TacticalWizardRuntime {
     const patient = state.agents.find((agent) => agent.id === plan.patientId);
     const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
     const security = plan.covererId === null ? null : state.agents.find((agent) => agent.id === plan.covererId) ?? null;
-    if (patient === undefined || rescuer === undefined) return false;
+    if (patient === undefined || rescuer === undefined || !this.isAlive(rescuer.id)) return false;
     for (const [key, expires] of this.recoveryFailedSecurityPoints) if (expires <= state.logicalTick) this.recoveryFailedSecurityPoints.delete(key);
     for (const [key, expires] of this.recoveryFailedTreatmentPoints) if (expires <= state.logicalTick) this.recoveryFailedTreatmentPoints.delete(key);
-    if (countReplan) {
-      if (plan.securityPoint !== null) this.recoveryFailedSecurityPoints.set(gridKey(navCell(plan.securityPoint)), state.logicalTick + 24);
-      this.recoveryFailedTreatmentPoints.set(gridKey(navCell(plan.treatmentPoint)), state.logicalTick + 18);
+    const securityOnlyReasons = new Set(['security_path_stalled', 'security_lost_los', 'security_fire_lane_blocked', 'friendly_fire_lane_blocked']);
+    const treatmentFailureReasons = new Set(['recovery_progress_watchdog']);
+    const scope: 'security' | 'treatment' | 'validate' = securityOnlyReasons.has(reason)
+      ? 'security'
+      : treatmentFailureReasons.has(reason) || (reason === 'incoming_fire_forced_reposition' && (plan.treatmentExposed || plan.pathExposureCells > 0))
+        ? 'treatment'
+        : 'validate';
+    if (countReplan && scope === 'security' && plan.securityPoint !== null) this.recoveryFailedSecurityPoints.set(gridKey(navCell(plan.securityPoint)), state.logicalTick + 24);
+    if (countReplan && scope === 'treatment') this.recoveryFailedTreatmentPoints.set(gridKey(navCell(plan.treatmentPoint)), state.logicalTick + 18);
+    const threat = this.recoveryThreatPoint(state);
+    if (scope === 'security' && security !== null) {
+      const selectedSecurity = selectRecoverySecurityPoint({ grid: tacticalWizardNavigationGrid, casualty: patient.position, security: security.position, rescuer: plan.treatmentPoint, threat, failedCells: new Set(this.recoveryFailedSecurityPoints.keys()) });
+      if (selectedSecurity === null) return false;
+      plan.securityPoint = { ...selectedSecurity.point };
+      const coverMember = this.hostAccess().members.find((entry) => entry.id === plan.covererId);
+      if (coverMember !== undefined) coverMember.tacticalTarget = { ...selectedSecurity.point };
+      this.contracts.delete(security.id);
+      this.recoveryLastReplanTick = state.logicalTick;
+      this.recoveryLastReplanReason = reason;
+      if (countReplan) this.recoverySafetyReplans += 1;
+      this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery security geometry replanned without discarding the valid treatment side.', { reason, scope, treatmentPoint: { ...plan.treatmentPoint }, treatmentExposed: plan.treatmentExposed, pathExposureCells: plan.pathExposureCells, securityPoint: { ...selectedSecurity.point }, securityHasThreatLos: selectedSecurity.hasThreatLos, securityFireLaneClear: selectedSecurity.fireLaneClear, safetyReplans: this.recoverySafetyReplans });
+      return true;
     }
-    const selected = selectRecoveryGeometry({
-      grid: tacticalWizardNavigationGrid,
-      casualty: patient.position,
-      rescuer: rescuer.position,
-      security: security?.position ?? null,
-      threat: this.recoveryThreatPoint(state),
-      failedTreatmentCells: new Set(this.recoveryFailedTreatmentPoints.keys()),
-      failedSecurityCells: new Set(this.recoveryFailedSecurityPoints.keys()),
-    });
+    const currentTreatmentCell = navCell(plan.treatmentPoint);
+    const rescuerCell = navCell(rescuer.position);
+    const currentPath = isWalkable(tacticalWizardNavigationGrid, currentTreatmentCell) ? findPath(tacticalWizardNavigationGrid, rescuerCell, currentTreatmentCell) : [];
+    const currentExposed = threat !== null && hasLineOfSight(tacticalWizardNavigationGrid, currentTreatmentCell, navCell(threat));
+    const currentPathExposure = threat === null ? 0 : currentPath.filter((cell) => hasLineOfSight(tacticalWizardNavigationGrid, cell, navCell(threat))).length;
+    const preserveTreatment = scope === 'validate' && currentPath.length > 0 && !currentExposed && currentPathExposure === 0;
+    if (preserveTreatment) {
+      plan.treatmentExposed = false;
+      plan.pathExposureCells = 0;
+      if (security !== null) {
+        const selectedSecurity = selectRecoverySecurityPoint({ grid: tacticalWizardNavigationGrid, casualty: patient.position, security: security.position, rescuer: plan.treatmentPoint, threat, failedCells: new Set(this.recoveryFailedSecurityPoints.keys()) });
+        if (selectedSecurity !== null) plan.securityPoint = { ...selectedSecurity.point };
+      } else plan.securityPoint = null;
+      this.recoveryLastReplanTick = state.logicalTick;
+      this.recoveryLastReplanReason = reason;
+      if (countReplan) this.recoverySafetyReplans += 1;
+      this.contracts.delete(plan.rescuerId);
+      if (plan.covererId !== null) this.contracts.delete(plan.covererId);
+      this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery geometry revalidated; the existing covered treatment side remains authoritative.', { reason, scope, treatmentPoint: { ...plan.treatmentPoint }, treatmentExposed: false, pathExposureCells: 0, securityPoint: clonePoint(plan.securityPoint), safetyReplans: this.recoverySafetyReplans });
+      return true;
+    }
+    const selected = selectRecoveryGeometry({ grid: tacticalWizardNavigationGrid, casualty: patient.position, rescuer: rescuer.position, security: security?.position ?? null, threat, failedTreatmentCells: new Set(this.recoveryFailedTreatmentPoints.keys()), failedSecurityCells: new Set(this.recoveryFailedSecurityPoints.keys()) });
     if (selected === null) return false;
     plan.treatmentPoint = { ...selected.treatmentPoint };
     plan.approachPoint = { ...selected.approachPoint };
@@ -1426,18 +1582,7 @@ export class TacticalWizardRuntime {
     this.recoveryLastReplanTick = state.logicalTick;
     this.recoveryLastReplanReason = reason;
     if (countReplan) this.recoverySafetyReplans += 1;
-    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery treatment / approach / security geometry replanned.', {
-      reason,
-      treatmentPoint: { ...selected.treatmentPoint },
-      approachPoint: { ...selected.approachPoint },
-      fallbackPoint: { ...selected.fallbackPoint },
-      treatmentExposed: selected.treatmentExposed,
-      pathExposureCells: selected.pathExposureCells,
-      securityPoint: selected.security === null ? null : { ...selected.security.point },
-      securityHasThreatLos: selected.security?.hasThreatLos ?? false,
-      securityFireLaneClear: selected.security?.fireLaneClear ?? false,
-      safetyReplans: this.recoverySafetyReplans,
-    });
+    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery treatment / approach / security geometry replanned.', { reason, scope, treatmentPoint: { ...selected.treatmentPoint }, approachPoint: { ...selected.approachPoint }, fallbackPoint: { ...selected.fallbackPoint }, treatmentExposed: selected.treatmentExposed, pathExposureCells: selected.pathExposureCells, securityPoint: selected.security === null ? null : { ...selected.security.point }, securityHasThreatLos: selected.security?.hasThreatLos ?? false, securityFireLaneClear: selected.security?.fireLaneClear ?? false, safetyReplans: this.recoverySafetyReplans });
     return true;
   }
 
@@ -1494,28 +1639,21 @@ export class TacticalWizardRuntime {
   private deferRecovery(state: TacticalHostState, reason: string): void {
     const plan = this.recoveryPlan;
     if (plan === null) return;
+    if (!this.validateRecoveryContract(state) || this.recoveryPlan === null) return;
     this.recoverySafetyDeferrals += 1;
     this.recoveryDeferredUntilTick = state.logicalTick + 8;
     this.recoverySafetyDecision = 'pause';
     this.recoveryPauseReason = 'deferred_safety_retry';
     this.recoveryWatchdogState = 'suspended_by_safety';
     plan.phase = 'approach';
-    plan.treatmentProgress = 0;
     plan.stalledTicks = 0;
     plan.stallReplans = 0;
-    plan.lastTreatmentProgress = 0;
+    plan.lastTreatmentProgress = plan.treatmentProgress;
     const rescuer = state.agents.find((agent) => agent.id === plan.rescuerId);
     if (rescuer !== undefined) plan.lastRescuerDistance = distance(rescuer.position, plan.treatmentPoint);
     this.contracts.delete(plan.rescuerId);
     if (plan.covererId !== null) this.contracts.delete(plan.covererId);
-    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery obligation deferred by safety authority; casualty ownership is retained for a bounded retry.', {
-      patientId: plan.patientId,
-      rescuerId: plan.rescuerId,
-      covererId: plan.covererId,
-      reason,
-      retryTick: this.recoveryDeferredUntilTick,
-      safetyDeferrals: this.recoverySafetyDeferrals,
-    });
+    this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery obligation deferred by safety authority; casualty ownership and treatment progress are retained for a bounded retry.', { patientId: plan.patientId, rescuerId: plan.rescuerId, covererId: plan.covererId, reason, retryTick: this.recoveryDeferredUntilTick, treatmentProgress: Number(plan.treatmentProgress.toFixed(3)), safetyDeferrals: this.recoverySafetyDeferrals });
   }
 
   private abortRecovery(state: TacticalHostState, reason: string): void {
@@ -1595,6 +1733,7 @@ export class TacticalWizardRuntime {
     this.threatUntilTick = tick + 10;
     this.hostAccess().log('agent', agentId, member.label, 'decision', `${member.label} health changed from incoming threat.`, { health: equipment.health, damage, reason });
     const state = this.hostState();
+    this.validateRecoveryContract(state);
     this.startRecoveryIfNeeded(state);
     this.syncHostOperationalContext(state);
   }

@@ -303,3 +303,12 @@ Shared Arbitration + Execution
 ```
 
 The key Willform rule is unchanged: **Reasoners propose; planners make domain plans; arbitration decides ownership; Execution Contract is the final authority.**
+
+
+## R3: Preview → Commit Transaction Boundary
+
+IAUS still ranks Opportunities only. Candidate geometry is now evaluated inside a Tactical Planning transaction: Preview may temporarily exercise the reference Host planner, but all tactic/role/target/plan-revision/log/contract mutations are rolled back before the next candidate is evaluated. The selected winner is then committed once.
+
+`local_reposition` is deliberately not implemented as `regroup`. The pressured member receives one planner-owned local target while the existing Bounding/Flank/Crossfire/Assault doctrine remains authoritative. On arrival, Tactical Planning reseeds the same doctrine from the new position.
+
+This boundary is a regression requirement: a rejected IAUS candidate must be observationally equivalent to never having been proposed.

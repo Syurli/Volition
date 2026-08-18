@@ -1,5 +1,12 @@
 # Changelog
 
+
+## Recovery authority and transactional IAUS planning R3
+
+- Fixed stale/dead Recovery rescuer ownership during Safety pause/defer and all-downed squad deadlock.
+- Scoped Recovery security/treatment replans, retained safe treatment geometry and medical progress, and allowed covered treatment through residual pressure.
+- Made IAUS Tactical Planner validation transactional and replaced squad-wide Regroup masquerading as local reposition with a true single-member planner lease.
+
 所有值得记录的 Willform 变化汇总于此。项目仍处于 pre-alpha，早期 API 和目录结构允许破坏性调整。
 
 ## Unreleased

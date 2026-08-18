@@ -232,3 +232,13 @@ CI scans Workbench TypeScript production imports and rejects numbered Simulation
 The invariant for IAUS is now explicit:
 
 > **Reasoner proposes. Tactical Planner owns role and geometry. Commitment owns continuity. Arbitration owns priority. Execution Contract owns final execution.**
+
+
+## Recovery Authority / Transactional IAUS R3
+
+- Recovery ownership is validated before Safety pause/reposition/defer. A dead or medically incapable rescuer is reassigned immediately; if no capable living rescuer exists, Recovery releases execution ownership instead of suspending Tactical Planning forever.
+- Security-only failures replan only Security geometry. Safe Treatment geometry is retained with hysteresis until it becomes exposed, unreachable, or is invalidated by a genuine treatment-progress failure.
+- A covered treatment side may continue through residual `pressured` history; Safety pause moves the rescuer toward fallback instead of producing a null movement owner, and deferral preserves treatment progress.
+- IAUS candidate validation is transactional: Tactical Host state, plan revision, roles, targets, events, logs, and execution contracts are restored after Preview. Only the winning candidate reaches Commit.
+- `local_reposition` is a single-member Tactical Planning lease. It preserves the current squad doctrine and reseeds that doctrine after arrival; it no longer aliases a squad-wide `regroup`.
+- Mature Crossfire/Assault geometry resists whole-plan pressure switches unless pressure reaches `pinned` or the established geometry/fire lanes have materially degraded.
