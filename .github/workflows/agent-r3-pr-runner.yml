@@ -19,12 +19,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - name: Load patch script from main
         run: |
           git fetch origin main
           git show origin/main:.github/agent-r3-patch.py > /tmp/agent-r3-patch.py
-      - run: npm ci
+      - name: Install workspace dependencies
+        run: npm install --no-audit --no-fund
       - name: Apply R3 patch
         run: python /tmp/agent-r3-patch.py
       - name: Test
