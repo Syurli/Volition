@@ -1,134 +1,105 @@
 # IAUS Utility Reasoner — Tactical Wizard Integration
 
-> Status: Tactical Wizard reference implementation. The utility kernel is intentionally not yet a frozen `Packages/Core` contract.
+> Status: Tactical Wizard reference implementation. IAUS is proven first in the game slice and is not yet a frozen `Packages/Core` contract.
 
-## 1. Why IAUS is being added
+## 1. Role in Willform
 
-Tactical Wizard already has a stable execution architecture:
+Tactical Wizard keeps the fixed production hierarchy:
 
 ```text
-Perception
-  ↓
+Perception / Attention
+        ↓
 Authoritative Facts / Contact Knowledge
-  ↓
-Tactical Reasoning & Planning
-  ↓
+        ↓
+IAUS Reasoner (opportunity ranking)
+        ↓
+Tactical Planning (role + geometry ownership)
+        ↓
 Commitment / Lease
-  ↓
+        ↓
 Operational Arbitration
-  ↓
+        ↓
 Execution Contract
-  ↓
+        ↓
 Host
 ```
 
-The missing capability is not another execution system. It is a better way to compare several simultaneously reasonable tactical opportunities, especially under incoming-fire pressure.
+IAUS answers **which tactical opportunity is worth considering now**. It does not answer which agent owns a role, which point the agent moves to, or whether movement / weapon authority is granted.
 
-IAUS (Infinite-Axis-style Utility System) is therefore integrated as a **Reasoner / Opportunity Selector**, not as the owner of movement or weapons.
+The first production domain remains incoming-fire pressure. Current tactical actions map to higher-level opportunity semantics:
 
-## 2. Non-goals
+| Runtime action | Opportunity meaning |
+|---|---|
+| `trade_fire` | `hold_current_plan` |
+| `reposition` | `local_reposition` |
+| `flank` | `counter_maneuver` |
+| `regroup` | `contract` |
+| `assault` | `aggressive_close` |
 
-This integration does **not**:
+The action names remain compatible with the Tactical Wizard slice while the opportunity names describe the reusable Reasoner contract we eventually want to promote.
+
+## 2. Non-goals and authority rules
+
+IAUS does **not**:
 
 - replace Contact Knowledge;
 - replace Tactical Planner / Doctrine;
 - replace flank, crossfire, assault, regroup or recovery state machines;
+- assign `role`, `task` or `tacticalTarget` directly;
 - replace Commitment / Lease;
 - replace Operational Arbitration;
-- directly write movement or weapon authority;
-- evaluate every motion frame and switch to the highest score immediately;
-- turn Willform into a utility-only AI framework.
+- write movement or weapon authority;
+- reselect every motion frame;
+- turn Willform into a utility-only framework.
 
-The fixed tactical hierarchy remains authoritative.
+A high Utility score is never execution authority.
 
-## 3. Runtime boundary
+## 3. IAUS R2: current-plan-aware utility
 
-```text
-World / Perception Facts
-        +
-Combat Profile
-        +
-Squad Capability
-        ↓
-IAUS Utility Reasoner
-        ↓
-Tactical Opportunity Proposal
-        ↓
-Tactical Planner / Spatial Solver
-        ↓
-Committed Response Lease
-        ↓
-Operational Arbitration
-        ↓
-Execution Contract
-```
+The first IAUS integration compared mostly the absolute attractiveness of each response. That made a high-coordination elite profile repeatedly favor `flank`, even when a good Crossfire or Assault was already established.
 
-The first production use case is incoming-fire pressure. Candidate opportunities are:
+R2 explicitly prices the **value of what the squad is already doing**.
 
-- `trade_fire` — deliberately hold the current exchange for a bounded period;
-- `reposition` — move to materially different cover geometry;
-- `flank` — keep support on the firing line while an available member counter-maneuvers;
-- `regroup` — contract / break contact when pressure is distributed across the element;
-- `assault` — aggressive closing used by feral/non-human doctrine in this reference slice.
+The Reasoner input now includes planner-owned context when available:
 
-## 4. Infinite axes
+- current tactic;
+- current plan progress;
+- number of safe fire lanes;
+- current geometry quality;
+- current tactic age;
+- recent committed pressure action;
+- age of that action;
+- novelty of the current contact geometry versus the previous maneuver.
 
-Each candidate is composed from independent normalized axes. Examples:
+This produces explicit axes such as:
 
-### Trade Fire
+- `current_plan_value`;
+- `plan_progress`;
+- `safe_fire_lanes`;
+- `switch_permission`;
+- `current_plan_release`;
+- `repeat_geometry_novelty`.
 
-- hold-ground bias;
-- aggression;
-- suppression tolerance;
-- current incoming-fire pressure;
-- whether a committed tactical geometry already exists;
-- low-weight deterministic variation.
+The intent is not to hard-code “Crossfire always wins.” A healthy, nearly complete Crossfire should be expensive to abandon under ordinary suppression, while pinned pressure, distributed pressure, casualty loss or invalid geometry can still overcome that switching cost.
 
-### Reposition
+## 4. Infinite axes and aggregation
 
-- reposition bias;
-- incoming-fire pressure;
-- pressure band;
-- whether current geometry should be released;
-- low-weight deterministic variation.
-
-### Flank
-
-- counter-maneuver bias;
-- coordination;
-- unpinned maneuver capacity;
-- pressure as an opportunity signal;
-- whether another element can continue support;
-- low-weight deterministic variation.
-
-### Regroup / Break Contact
-
-- break-contact bias;
-- fraction of the squad under pressure;
-- pinned evidence;
-- risk aversion;
-- low-weight deterministic variation.
-
-Hard capability failures are not expressed as tiny scores. They remove candidates before ranking. For example, a one-person survivor cannot select `flank`.
-
-## 5. Utility aggregation
-
-The reference implementation uses weighted geometric aggregation:
+Each candidate is composed from independent normalized axes, transformed by small inspectable response curves and aggregated with weighted geometric scoring.
 
 ```text
-axis input
-  ↓ response curve
+fact / profile input
+        ↓
+response curve
+        ↓
 axis response × axis weight
-  ↓
+        ↓
 weighted geometric score
-  × profile candidate multiplier
-  ↓
+        × candidate profile multiplier
+        ↓
 candidate utility
 ```
 
-This keeps all considerations relevant without letting the mere number of axes penalize a candidate.
-
-Supported response-curve primitives in the first slice:
+Supported curve primitives remain deliberately small:
 
 - linear;
 - inverse;
@@ -136,72 +107,165 @@ Supported response-curve primitives in the first slice:
 - power;
 - threshold.
 
-The curve model is deliberately small and inspectable. More curve types should be added only after Tactical Wizard produces a concrete need.
+Hard capability failures remain outside score competition. A single survivor cannot select `flank`; an unavailable candidate is removed rather than assigned a tiny score.
 
-## 6. IAUS and existing combat style
+## 5. Tactical Planner is the single owner of roles and geometry
 
-IAUS must preserve the existing archetype semantics.
+R2 removes the adaptive layer's previous post-planner writes to `role`, `task` and `tacticalTarget`.
 
-### Tactical human
+The sequence is now:
 
-Available under-fire opportunities:
+```text
+IAUS ranking
+   ↓
+Candidate #1
+   ↓
+Tactical Planner
+   ├─ assigns canonical role owner
+   ├─ generates canonical tactical target
+   ├─ validates path and displacement
+   └─ returns planner result
+        ↓ accepted
+Response Lease
+```
 
-- trade fire;
-- reposition;
-- flank when another living member exists;
-- regroup / break contact.
+If the planner rejects the first candidate, the Reasoner may offer the next ranked candidate. The adaptive layer never creates a second flanker beside the planner's flanker.
 
-Pressure-driven `assault` is not enabled merely because it scores well.
+For the current Tactical Wizard slice, `local_reposition` is mapped through existing regroup positioning so that the Tactical Planner still owns the geometry. A dedicated local-reposition planner can be added later if repeated game validation proves it necessary; it must still obey the same single-owner rule.
 
-### Feral / pack
+## 6. Geometry acceptance and zero-displacement protection
 
-The reference model does not reinterpret suppression as human fear/cover doctrine. Available pressure responses are:
+A `counter_maneuver` / `flank` proposal is accepted only if Tactical Planning produces exactly one canonical living flanker and valid new geometry.
 
-- flank / encirclement when another member exists;
-- assault / aggressive closing.
+Current validation includes:
 
-### Machine
+- exactly one `flanker / flank_to_cover` owner;
+- non-null tactical target;
+- reachable path;
+- minimum planned displacement of 2.75 world units;
+- meaningful flank-angle gain, unless displacement itself is strong enough to represent materially new geometry;
+- recent-flank novelty checks when the contact has barely moved.
 
-The reference model treats incoming fire as geometry / damage risk. Available pressure responses are intentionally limited to:
+A planner result that leaves the flanker at its current point is rejected. IAUS then considers the next candidate instead of committing a visually stationary “flank.”
 
-- trade fire;
-- reposition.
+## 7. Repetition memory
 
-This keeps IAUS from homogenizing different enemy thinking styles.
+A recent `flank` is not permanently forbidden. Instead R2 applies a short memory window.
 
-## 7. Commitment is still mandatory
+When the last committed response was a flank and the target/contact geometry has barely changed, `repeat_geometry_novelty` reduces the next flank's Utility. As time passes or the target meaningfully relocates, the penalty naturally disappears.
 
-The winning utility candidate is only a proposal.
+This prevents `Crossfire → Flank → Crossfire → Flank` loops without converting the system back into rigid cooldown scripting.
 
-Once accepted, the existing response lease remains in force until completion, expiry or hard invalidation. Subsequent bullets may raise pressure, but they do not re-run utility selection and replace geometry every frame.
+## 8. Commitment and progress-driven release
 
-This preserves the tactical readability already recovered in Tactical Wizard.
+The winning planner result still becomes a bounded lease. Ordinary additional bullets can increase pressure but cannot replace that lease every frame.
 
-## 8. Workbench authoring
+R2 keeps the hard timeout and adds soft completion semantics:
 
-The Tactical Wizard Design page exposes IAUS in two layers:
+- `trade_fire` may release early after pressure is stably low for a short window;
+- reposition releases when the planner target is reached;
+- other geometry responses may release after their goal is complete and pressure has remained stable;
+- Recovery, member loss, invalid world geometry or incompatible tactic transitions can still hard-invalidate the lease.
 
-1. existing Combat Profile sliders provide important utility axes such as aggression, suppression tolerance, coordination and counter-maneuver preference;
-2. per-candidate multipliers provide a direct way to tune `trade_fire`, `reposition`, `flank`, `regroup` and `assault` without changing the underlying tactical implementation.
+This makes Commitment mean “finish the purpose when it remains valid,” rather than “blindly wait N ticks.”
 
-The page also provides a live preview scenario for:
+## 9. Two-stage trace
 
-- incoming-fire pressure;
-- number of pressured squad members;
-- current committed tactic.
+A pressure decision is now observable as two stages:
 
-The preview shows:
+```text
+Reasoner
+  flank 0.91
+  trade_fire 0.76
+  reposition 0.63
+        ↓
+Planner
+  flank rejected: flank_displacement_below_minimum
+        ↓
+Planner
+  trade_fire accepted: hold_current_plan
+        ↓
+Lease committed
+```
 
-- candidate availability / hard gates;
-- resulting utility score;
-- each axis response;
-- selected winner.
+`adaptiveCombat.lastPlannerTrace` records:
 
-The response curves are fixed in this first integration. A general curve graph editor should only be promoted after the Tactical Wizard workflow proves which authoring operations are actually needed.
+- decision tick and source;
+- current tactic;
+- plan progress;
+- safe fire lanes;
+- geometry quality;
+- IAUS winner;
+- all candidate scores;
+- each planner attempt;
+- rejection reason;
+- planner revision;
+- chosen maneuver owner/target;
+- target displacement / flank-angle gain where relevant;
+- finally committed action.
 
-## 9. Persistence
+This separates “Reasoner preferred the wrong thing” from “Planner could not find valid geometry.”
 
-Tactical Wizard IAUS multipliers remain inside the project `extensions` namespace for now:
+## 10. Active response versus last decision
+
+`adaptiveCombat.tacticalAction` now means **active lease only**.
+
+When no pressure lease is active:
+
+```text
+adaptiveCombat.tacticalAction = none
+adaptiveCombat.activeResponseLease = null
+```
+
+Historical diagnostics are exposed separately through:
+
+- `lastTacticalAction`;
+- `lastTacticalActionReason`;
+- `lastTacticalActionTick`;
+- `lastPlannerTrace`.
+
+The Workbench therefore no longer presents an old `FLANK` decision as if it were still executing after pressure and the lease are gone.
+
+## 11. Attention authority
+
+Confirmed visual contact is the highest-priority attention fact in the adaptive view. A visible agent publishes:
+
+```text
+mode = track_visual
+anchor = current confirmed contact
+lookTarget = current confirmed contact
+```
+
+An old acoustic investigation may remain in historical perception state, but it cannot be presented as the active gaze anchor while the agent is directly tracking the player.
+
+## 12. Observation purity
+
+`TacticalWizardAdaptiveSimulation.getState()` is an observation-only operation.
+
+State reads do not:
+
+- apply formation roles;
+- update pressure bands;
+- maintain / release leases;
+- rebuild planner geometry;
+- increment counters;
+- append logs.
+
+Behavior mutation occurs only in explicit runtime/control paths such as `advance`, player combat inputs, test injections, reset, profile changes and world invalidation. UI polling frequency therefore cannot change AI behavior.
+
+## 13. Workbench authoring
+
+The Tactical Wizard Design page continues to expose:
+
+1. combat profile axes such as aggression, suppression tolerance, coordination and counter-maneuver preference;
+2. per-candidate IAUS multipliers;
+3. a live pressure preview showing availability, score, axes and winner.
+
+Response curves remain fixed in this slice. A general curve editor should be promoted only after Tactical Wizard proves which authoring operations are repeatedly needed.
+
+## 14. Persistence
+
+Tactical Wizard IAUS multipliers remain inside project `extensions`:
 
 - `tacticalWizardUtilityTradeFireWeight`;
 - `tacticalWizardUtilityRepositionWeight`;
@@ -209,29 +273,33 @@ Tactical Wizard IAUS multipliers remain inside the project `extensions` namespac
 - `tacticalWizardUtilityRegroupWeight`;
 - `tacticalWizardUtilityAssaultWeight`.
 
-They are not yet generic Schema fields.
+They are not generic Schema fields yet.
 
-This follows the project rule: **Tactical Wizard proves semantics first; Willform generalizes them later.**
+## 15. Promotion criteria to Willform Core
 
-## 10. Promotion criteria to Willform Core
-
-The IAUS contract should move toward a portable Reasoner API only after at least these scenarios are validated:
+A portable IAUS / Utility Reasoner contract should be promoted only after at least:
 
 1. elite tactical squad;
 2. regular infantry with visibly different pressure response;
 3. one non-human mindset;
-4. at least one decision domain outside incoming-fire pressure.
+4. one decision domain outside incoming-fire pressure.
 
-A future portable Reasoner contract should likely expose:
+The likely portable boundary remains:
 
 ```text
 Fact Snapshot
-  ↓
+    ↓
 Reasoner Input
-  ↓
-Candidate + Considerations + Response Curves
-  ↓
-Proposal Set + Trace
+    ↓
+Candidates + Considerations + Curves
+    ↓
+Proposal Set + Reasoner Trace
+    ↓
+Domain Planner
+    ↓
+Planner Result / Rejection Trace
+    ↓
+Shared Arbitration + Execution
 ```
 
-It must still hand proposals to the shared Arbitration / Execution architecture rather than becoming a parallel runtime authority.
+The key Willform rule is unchanged: **Reasoners propose; planners make domain plans; arbitration decides ownership; Execution Contract is the final authority.**

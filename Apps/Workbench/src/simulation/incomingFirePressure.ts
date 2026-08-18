@@ -3,6 +3,7 @@ import { findPath, gridKey, hasLineOfSight, isWalkable, type GridPoint, type Nav
 
 export type FirePressureBand = 'stable' | 'pressured' | 'suppressed' | 'pinned';
 export type PressureTacticalAction = 'none' | 'trade_fire' | 'reposition' | 'flank' | 'regroup' | 'assault';
+export type PressureOpportunityKind = 'none' | 'hold_current_plan' | 'local_reposition' | 'counter_maneuver' | 'contract' | 'aggressive_close';
 export type PressureLocalEffect = 'normal' | 'short_peek' | 'cover_bound' | 'pinned_hold';
 
 export interface PressureProfileLike {
@@ -33,10 +34,20 @@ export interface PressureProposalInput {
   readonly profile: PressureProfileLike;
   /** Low-weight deterministic variation axis. It never bypasses hard preconditions or commitment. */
   readonly roll: number;
+  /** Planner-owned context. Optional so the Workbench authoring preview can still evaluate isolated scenarios. */
+  readonly currentPlanProgress?: number;
+  readonly safeFireLanes?: number;
+  readonly geometryQuality?: number;
+  readonly currentTacticTicks?: number;
+  /** Recent committed opportunity memory. This penalizes repeating the same maneuver when the contact geometry did not change. */
+  readonly recentAction?: PressureTacticalAction;
+  readonly recentActionAgeTicks?: number;
+  readonly recentGeometryNovelty?: number;
 }
 
 export interface PressureResponseProposal {
   readonly action: PressureTacticalAction;
+  readonly opportunity: PressureOpportunityKind;
   readonly pressuredAgentId: string;
   readonly reason: string;
   readonly utility: IausEvaluation<PressureTacticalAction>;
@@ -45,6 +56,7 @@ export interface PressureResponseProposal {
 export interface PressureResponseLease {
   readonly id: string;
   readonly action: PressureTacticalAction;
+  readonly opportunity: PressureOpportunityKind;
   readonly pressuredAgentId: string;
   readonly maneuverAgentId: string | null;
   readonly supportAgentId: string | null;
@@ -56,6 +68,10 @@ export interface PressureResponseLease {
   readonly startedBand: FirePressureBand;
   readonly expectedTactic: string | null;
   readonly worldRevision: number;
+  readonly planRevision: number;
+  readonly plannerTargetDisplacement: number | null;
+  readonly plannerAngleGainDegrees: number | null;
+  readonly softStableTicks: number;
   readonly reason: string;
 }
 
@@ -103,16 +119,26 @@ export function localEffectForBand(band: FirePressureBand): PressureLocalEffect 
   return 'normal';
 }
 
+export function opportunityForPressureAction(action: PressureTacticalAction): PressureOpportunityKind {
+  if (action === 'trade_fire') return 'hold_current_plan';
+  if (action === 'reposition') return 'local_reposition';
+  if (action === 'flank') return 'counter_maneuver';
+  if (action === 'regroup') return 'contract';
+  if (action === 'assault') return 'aggressive_close';
+  return 'none';
+}
+
 /**
  * IAUS is deliberately used only to rank tactical opportunities. The selected
- * proposal still has to become a committed response lease and then pass the
- * existing operational arbitration / execution-contract path.
+ * proposal still has to be accepted by Tactical Planning, become a committed
+ * response lease, and pass the existing arbitration / execution-contract path.
  */
 export function choosePressureProposal(input: PressureProposalInput): PressureResponseProposal {
   const utility = evaluatePressureUtilities(input);
   const action = utility.selectedId ?? 'reposition';
   return {
     action,
+    opportunity: opportunityForPressureAction(action),
     pressuredAgentId: input.pressuredAgentId,
     reason: pressureReason(action, input.band, input.pressure, input.profile, utility),
     utility,
@@ -131,6 +157,32 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
   const feral = profile.mindset === 'feral';
   const machine = profile.mindset === 'machine';
 
+  const planProgress = clamp01(input.currentPlanProgress ?? (stableTactic ? 0.45 : 0.15));
+  const safeLaneQuality = clamp01((input.safeFireLanes ?? (currentTactic === 'crossfire' ? 1 : 0)) / 2);
+  const geometryQuality = clamp01(input.geometryQuality ?? Math.max(planProgress * 0.72, safeLaneQuality));
+  const tacticMaturity = clamp01((input.currentTacticTicks ?? 0) / 16);
+  const currentPlanValue = stableTactic
+    ? clamp01(0.22 + planProgress * 0.34 + safeLaneQuality * 0.24 + geometryQuality * 0.14 + tacticMaturity * 0.06)
+    : clamp01(0.12 + planProgress * 0.26 + geometryQuality * 0.16);
+  const switchCost = stableTactic
+    ? clamp01(0.24 + planProgress * 0.32 + safeLaneQuality * 0.22 + geometryQuality * 0.16 + tacticMaturity * 0.06)
+    : clamp01(0.12 + planProgress * 0.18 + geometryQuality * 0.12);
+  const hardPressureRelease = band === 'pinned' ? 1 : clamp01(pressure * 0.62 + pressuredRatio * 0.28 + bandValue * 0.1);
+  const switchPermission = band === 'pinned'
+    ? clamp01(Math.max(0.7, 1 - switchCost * 0.28))
+    : clamp01(Math.max(0.08, 1 - switchCost * 0.9 + hardPressureRelease * 0.18));
+  const currentPlanRelease = band === 'pinned'
+    ? clamp01(Math.max(0.55, 1 - currentPlanValue * 0.45))
+    : clamp01(Math.max(0.06, 1 - currentPlanValue));
+
+  const recentAge = Math.max(0, input.recentActionAgeTicks ?? 999);
+  const repeatedFlank = input.recentAction === 'flank' && recentAge < 32;
+  const recentGeometryNovelty = clamp01(input.recentGeometryNovelty ?? 1);
+  const repeatNovelty = repeatedFlank
+    ? clamp01(0.12 + Math.min(1, recentAge / 32) * 0.38 + recentGeometryNovelty * 0.5)
+    : 1;
+  const alreadyFlanking = currentTactic === 'flank' && planProgress < 0.96;
+
   const candidates: readonly IausCandidateDefinition<PressureTacticalAction>[] = [
     {
       id: 'trade_fire',
@@ -141,8 +193,10 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
         axis('hold_ground', profile.holdGroundBias, 1.3, 'power', 1.1),
         axis('aggression', profile.aggression, 0.75, 'linear'),
         axis('suppression_tolerance', profile.suppressionTolerance, 0.65, 'linear'),
-        axis('pressure_survivability', pressure, 1.05, 'inverse', 1.25, 0.16),
-        axis('committed_geometry', stableTactic ? 1 : 0.45, 0.55, 'smoothstep', 1, 0.2),
+        axis('pressure_survivability', pressure, 1.05, 'inverse', 1.25, 0.12),
+        axis('current_plan_value', currentPlanValue, 1.05, 'smoothstep', 1, 0.16),
+        axis('plan_progress', stableTactic ? planProgress : 0.42, 0.7, 'smoothstep', 1, 0.16),
+        axis('safe_fire_lanes', stableTactic ? Math.max(0.2, safeLaneQuality) : 0.45, 0.55, 'linear', 1, 0.16),
         axis('variation', variation(0.11), 0.08, 'linear'),
       ],
     },
@@ -155,7 +209,8 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
         axis('reposition_bias', profile.repositionBias, 1.3, 'power', 1.05),
         axis('pressure', 0.28 + pressure * 0.72, 1.2, 'smoothstep'),
         axis('pressure_band', 0.3 + bandValue * 0.7, 0.8, 'linear'),
-        axis('geometry_release', stableTactic ? 0.52 : 1, 0.48, 'linear', 1, 0.25),
+        axis('switch_permission', switchPermission, 1.05, 'smoothstep', 1, 0.08),
+        axis('current_plan_release', currentPlanRelease, 0.82, 'smoothstep', 1, 0.08),
         axis('variation', variation(0.37), 0.08, 'linear'),
       ],
     },
@@ -170,6 +225,9 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
         axis('maneuver_capacity', maneuverCapacity, 1.25, 'smoothstep', 1, 0.12),
         axis('pressure_opportunity', 0.45 + pressure * 0.55, 0.62, 'smoothstep'),
         axis('support_not_pinned', 0.3 + maneuverCapacity * 0.7, 0.75, 'linear', 1, 0.15),
+        axis('switch_permission', alreadyFlanking ? 0.06 : switchPermission, 1.35, 'smoothstep', 1, 0.04),
+        axis('current_plan_release', alreadyFlanking ? 0.05 : currentPlanRelease, 1.05, 'smoothstep', 1, 0.04),
+        axis('repeat_geometry_novelty', repeatNovelty, 1.15, 'smoothstep', 1, 0.05),
         axis('variation', variation(0.61), 0.08, 'linear'),
       ],
     },
@@ -183,6 +241,7 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
         axis('distributed_pressure', pressuredRatio, 1.45, 'smoothstep', 1, 0.08),
         axis('pinned_evidence', 0.18 + bandValue * 0.82, 1.05, 'smoothstep'),
         axis('risk_aversion', 0.28 + (1 - profile.aggression) * 0.72, 0.6, 'linear'),
+        axis('switch_permission', band === 'pinned' ? Math.max(0.78, switchPermission) : switchPermission, 0.9, 'smoothstep', 1, 0.08),
         axis('variation', variation(0.83), 0.08, 'linear'),
       ],
     },
@@ -195,6 +254,7 @@ export function evaluatePressureUtilities(input: PressureProposalInput): IausEva
         axis('aggression', profile.aggression, 1.35, 'power', 1.05),
         axis('pressure_to_closing', 0.38 + pressure * 0.62, 1.05, 'smoothstep'),
         axis('direct_closing_bias', 0.25 + (1 - profile.counterManeuverBias) * 0.75, 1.15, 'linear', 1, 0.12),
+        axis('switch_permission', band === 'pinned' ? Math.max(0.72, switchPermission) : switchPermission, 0.72, 'linear', 1, 0.08),
         axis('variation', variation(0.47), 0.08, 'linear'),
       ],
     },
@@ -262,20 +322,30 @@ export function deterministicPressureRoll(id: string, a: number, b: number): num
   return (hash >>> 0) / 4294967296;
 }
 
+export function pressureReasonForAction(
+  action: PressureTacticalAction,
+  band: FirePressureBand,
+  pressure: number,
+  profile: PressureProfileLike,
+  evaluation: IausEvaluation<PressureTacticalAction>,
+): string {
+  return pressureReason(action, band, pressure, profile, evaluation);
+}
+
 function pressureReason(action: PressureTacticalAction, band: FirePressureBand, pressure: number, profile: PressureProfileLike, evaluation: IausEvaluation<PressureTacticalAction>): string {
   const level = `${band} incoming-fire pressure ${pressure.toFixed(2)}`;
-  const ranking = evaluation.candidates
+  const ranking = [...evaluation.candidates]
     .filter((entry) => entry.available)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 2)
+    .sort((a, b) => b.score - a.score || a.candidateId.localeCompare(b.candidateId, 'en'))
+    .slice(0, 3)
     .map((entry) => `${entry.candidateId}=${entry.score.toFixed(3)}`)
     .join(', ');
   const utility = `IAUS selected ${action}${ranking ? ` (${ranking})` : ''}`;
-  if (action === 'trade_fire') return `${level}; ${utility}; ${profile.id} deliberately holds the current geometry for a bounded exchange lease.`;
-  if (action === 'flank') return `${level}; ${utility}; the pressured firing line is held by support while one stable maneuver element commits to a flank.`;
-  if (action === 'reposition') return `${level}; ${utility}; the locally pressured member needs materially different cover geometry before resuming normal doctrine.`;
-  if (action === 'regroup') return `${level}; ${utility}; pressure is distributed across the element, so the squad contracts instead of repeatedly rotating exposed roles.`;
-  if (action === 'assault') return `${level}; ${utility}; ${profile.mindset} converts danger into aggressive closing rather than human cover discipline.`;
+  if (action === 'trade_fire') return `${level}; ${utility}; current-plan value and switching cost favor preserving readable geometry for a bounded exchange.`;
+  if (action === 'flank') return `${level}; ${utility}; counter-maneuver is proposed to Tactical Planning and must still prove new flank geometry.`;
+  if (action === 'reposition') return `${level}; ${utility}; local reposition is proposed to Tactical Planning instead of directly overwriting an agent target.`;
+  if (action === 'regroup') return `${level}; ${utility}; pressure is distributed across the element, so contraction is proposed instead of repeated role rotation.`;
+  if (action === 'assault') return `${level}; ${utility}; ${profile.mindset} converts danger into aggressive closing, subject to planner acceptance.`;
   return `${level}; ${utility}`;
 }
 
