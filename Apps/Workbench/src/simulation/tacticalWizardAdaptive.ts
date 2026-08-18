@@ -13,6 +13,7 @@ import {
   nextPressureBand,
   opportunityForPressureAction,
   pressureReasonForAction,
+  selectUnderFireReposition,
   type FirePressureBand,
   type PressureLocalEffect,
   type PressureOpportunityKind,
@@ -136,6 +137,7 @@ interface InternalHost {
   getPatrolTarget?: (member: InternalMember) => GridPoint;
   transitionTactic?: (next: string, reason: string, rotateRoles: boolean) => void;
   refreshTacticalPlan?: () => void;
+  planRevision?: number;
   log: (...args: unknown[]) => void;
   pushEvent: (message: string) => void;
 }
@@ -151,6 +153,15 @@ interface PlannerAttemptResult extends PressurePlannerAttemptView {
   readonly expectedTactic: string | null;
   readonly origin: GridPoint | null;
   readonly supportAgentId: string | null;
+}
+
+interface HostPlanTransactionSnapshot {
+  readonly hostFields: Readonly<Record<string, unknown>>;
+  readonly members: readonly { readonly id: string; readonly fields: Readonly<Record<string, unknown>> }[];
+  readonly eventLog: readonly string[];
+  readonly runLog: readonly unknown[];
+  readonly runLogSequence: number;
+  readonly contracts: readonly (readonly [string, unknown])[];
 }
 
 const FORMATION_ARRIVAL = 0.55;
@@ -653,202 +664,114 @@ export class TacticalWizardAdaptiveSimulation {
     const previousTactic = host.tactic;
     const previousPlanRevision = state.coordination.planRevision;
     const opportunity = opportunityForPressureAction(action);
-    const rejected = (why: string, values: Partial<PlannerAttemptResult> = {}): PlannerAttemptResult => ({
-      candidateId: action,
-      opportunity,
-      utilityScore,
-      accepted: false,
-      reason: why,
-      planRevision: values.planRevision ?? previousPlanRevision,
-      maneuverAgentId: values.maneuverAgentId ?? null,
-      supportAgentId: values.supportAgentId ?? null,
-      origin: clonePoint(values.origin ?? null),
-      target: clonePoint(values.target ?? null),
-      displacement: values.displacement ?? null,
-      angleGainDegrees: values.angleGainDegrees ?? null,
-      expectedTactic: values.expectedTactic ?? previousTactic,
-    });
-    const accepted = (values: Omit<PlannerAttemptResult, 'candidateId' | 'opportunity' | 'utilityScore' | 'accepted'>): PlannerAttemptResult => ({
-      candidateId: action,
-      opportunity,
-      utilityScore,
-      accepted: true,
-      ...values,
-    });
-
-    if (action === 'trade_fire') {
-      return accepted({
-        reason: 'planner_accepted_hold_current_plan',
-        planRevision: state.coordination.planRevision,
-        maneuverAgentId: null,
-        supportAgentId: host.suppressorId,
-        origin: null,
-        target: null,
-        displacement: null,
-        angleGainDegrees: null,
-        expectedTactic: host.tactic,
-      });
-    }
-
+    const rejected = (why: string, values: Partial<PlannerAttemptResult> = {}): PlannerAttemptResult => ({ candidateId: action, opportunity, utilityScore, accepted: false, reason: why, planRevision: values.planRevision ?? previousPlanRevision, maneuverAgentId: values.maneuverAgentId ?? null, supportAgentId: values.supportAgentId ?? null, origin: clonePoint(values.origin ?? null), target: clonePoint(values.target ?? null), displacement: values.displacement ?? null, angleGainDegrees: values.angleGainDegrees ?? null, expectedTactic: values.expectedTactic ?? previousTactic });
+    const accepted = (values: Omit<PlannerAttemptResult, 'candidateId' | 'opportunity' | 'utilityScore' | 'accepted'>): PlannerAttemptResult => ({ candidateId: action, opportunity, utilityScore, accepted: true, ...values });
+    if (action === 'trade_fire') return accepted({ reason: 'planner_accepted_hold_current_plan', planRevision: previousPlanRevision, maneuverAgentId: null, supportAgentId: host.suppressorId, origin: null, target: null, displacement: null, angleGainDegrees: null, expectedTactic: previousTactic });
+    const ownerBand = this.pressureBandByAgent.get(pressuredAgentId) ?? 'stable';
+    const planProgress = this.currentPlanProgress(state);
+    const geometryQuality = this.currentGeometryQuality(state, planProgress);
+    const maturePlan = (previousTactic === 'crossfire' || previousTactic === 'assault') && planProgress >= 0.5 && state.safeFireLanes >= 1 && geometryQuality >= 0.4;
+    if (maturePlan && ownerBand !== 'pinned' && (action === 'flank' || action === 'regroup')) return rejected('mature_plan_requires_pinned_pressure_or_geometry_loss');
     if (action === 'flank') {
-      if (host.tactic === 'flank' && this.currentPlanProgress(state) < 0.96) return rejected('current_flank_already_committed');
-      host.transitionTactic?.('flank', reason, false);
-      const plannedState = this.simulation.getState();
-      const canonical = plannedState.agents.filter((agent) => agent.alive && agent.role === 'flanker' && agent.task === 'flank_to_cover');
-      if (canonical.length !== 1) {
-        this.restoreTactic(previousTactic, 'planner rejected counter-maneuver because canonical flanker ownership was ambiguous');
-        return rejected('canonical_flanker_count_invalid', { planRevision: plannedState.coordination.planRevision });
-      }
-      const flanker = canonical[0]!;
-      const origin = state.agents.find((agent) => agent.id === flanker.id)?.position ?? flanker.position;
-      const target = flanker.tacticalTarget;
-      if (target === null) {
-        this.restoreTactic(previousTactic, 'planner rejected counter-maneuver because no flank target was produced');
-        return rejected('planner_missing_flank_target', { planRevision: plannedState.coordination.planRevision, maneuverAgentId: flanker.id, origin });
-      }
-      const displacement = distance(origin, target);
-      const threat = host.sharedLastKnownPosition ?? state.player;
-      const angleGainDegrees = flankAngleGainDegrees(origin, target, threat);
-      const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(target));
-      const recentRepeat = this.lastCommittedAction === 'flank' && host.logicalTick - this.lastCommittedActionTick < RECENT_FLANK_MEMORY_TICKS;
-      const targetNovelty = this.lastCommittedTarget === null ? Number.POSITIVE_INFINITY : distance(target, this.lastCommittedTarget);
-      const contactNovelty = this.recentGeometryNovelty(host.sharedLastKnownPosition);
-      const invalidReason = displacement < MIN_PLANNED_MOVE_DISPLACEMENT
-        ? 'flank_displacement_below_minimum'
-        : path.length < 2
-          ? 'flank_path_unreachable_or_zero_length'
-          : angleGainDegrees < MIN_FLANK_ANGLE_GAIN_DEGREES && displacement < STRONG_FLANK_DISPLACEMENT
-            ? 'flank_angle_gain_too_small'
-            : recentRepeat && targetNovelty < MIN_REPEAT_FLANK_TARGET_NOVELTY && contactNovelty < 0.42
-              ? 'recent_flank_repeats_same_geometry'
-              : null;
-      if (invalidReason !== null) {
-        this.restoreTactic(previousTactic, `planner rejected counter-maneuver: ${invalidReason}`);
-        return rejected(invalidReason, {
-          planRevision: plannedState.coordination.planRevision,
-          maneuverAgentId: flanker.id,
-          supportAgentId: plannedState.squad.suppressorId,
-          origin,
-          target,
-          displacement: Number(displacement.toFixed(3)),
-          angleGainDegrees: Number(angleGainDegrees.toFixed(2)),
-          expectedTactic: 'flank',
-        });
-      }
-      return accepted({
-        reason: 'planner_accepted_canonical_flank_geometry',
-        planRevision: plannedState.coordination.planRevision,
-        maneuverAgentId: flanker.id,
-        supportAgentId: plannedState.squad.suppressorId,
-        origin: { ...origin },
-        target: { ...target },
-        displacement: Number(displacement.toFixed(3)),
-        angleGainDegrees: Number(angleGainDegrees.toFixed(2)),
-        expectedTactic: 'flank',
+      if (previousTactic === 'flank' && planProgress < 0.96) return rejected('current_flank_already_committed');
+      return this.withTacticalPlanPreview('flank', reason, () => {
+        const plannedState = this.simulation.getState();
+        const canonical = plannedState.agents.filter((agent) => agent.alive && agent.role === 'flanker' && agent.task === 'flank_to_cover');
+        if (canonical.length !== 1) return rejected('canonical_flanker_count_invalid', { planRevision: plannedState.coordination.planRevision });
+        const flanker = canonical[0]!;
+        const origin = state.agents.find((agent) => agent.id === flanker.id)?.position ?? flanker.position;
+        const target = flanker.tacticalTarget;
+        if (target === null) return rejected('planner_missing_flank_target', { planRevision: plannedState.coordination.planRevision, maneuverAgentId: flanker.id, origin });
+        const displacement = distance(origin, target);
+        const threat = host.sharedLastKnownPosition ?? state.player;
+        const angleGainDegrees = flankAngleGainDegrees(origin, target, threat);
+        const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(target));
+        const recentRepeat = this.lastCommittedAction === 'flank' && host.logicalTick - this.lastCommittedActionTick < RECENT_FLANK_MEMORY_TICKS;
+        const targetNovelty = this.lastCommittedTarget === null ? Number.POSITIVE_INFINITY : distance(target, this.lastCommittedTarget);
+        const contactNovelty = this.recentGeometryNovelty(host.sharedLastKnownPosition);
+        const invalidReason = displacement < MIN_PLANNED_MOVE_DISPLACEMENT ? 'flank_displacement_below_minimum' : path.length < 2 ? 'flank_path_unreachable_or_zero_length' : angleGainDegrees < MIN_FLANK_ANGLE_GAIN_DEGREES && displacement < STRONG_FLANK_DISPLACEMENT ? 'flank_angle_gain_too_small' : recentRepeat && targetNovelty < MIN_REPEAT_FLANK_TARGET_NOVELTY && contactNovelty < 0.42 ? 'recent_flank_repeats_same_geometry' : null;
+        if (invalidReason !== null) return rejected(invalidReason, { planRevision: plannedState.coordination.planRevision, maneuverAgentId: flanker.id, supportAgentId: plannedState.squad.suppressorId, origin, target, displacement: Number(displacement.toFixed(3)), angleGainDegrees: Number(angleGainDegrees.toFixed(2)), expectedTactic: 'flank' });
+        return accepted({ reason: 'planner_accepted_canonical_flank_geometry', planRevision: plannedState.coordination.planRevision, maneuverAgentId: flanker.id, supportAgentId: plannedState.squad.suppressorId, origin: { ...origin }, target: { ...target }, displacement: Number(displacement.toFixed(3)), angleGainDegrees: Number(angleGainDegrees.toFixed(2)), expectedTactic: 'flank' });
       });
     }
-
     if (action === 'reposition') {
-      if (host.tactic !== 'regroup') host.transitionTactic?.('regroup', reason, false);
-      const plannedState = this.simulation.getState();
-      const agent = plannedState.agents.find((entry) => entry.id === pressuredAgentId && entry.alive);
-      const origin = state.agents.find((entry) => entry.id === pressuredAgentId)?.position ?? agent?.position ?? null;
-      const target = agent?.tacticalTarget ?? null;
-      if (agent === undefined || origin === null || target === null) {
-        if (previousTactic !== 'regroup') this.restoreTactic(previousTactic, 'planner rejected local reposition because regroup geometry was unavailable');
-        return rejected('planner_missing_reposition_geometry', { planRevision: plannedState.coordination.planRevision, maneuverAgentId: pressuredAgentId, origin, target, expectedTactic: 'regroup' });
-      }
-      const displacement = distance(origin, target);
-      const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(target));
-      if (displacement < MIN_PLANNED_MOVE_DISPLACEMENT || path.length < 2) {
-        if (previousTactic !== 'regroup') this.restoreTactic(previousTactic, 'planner rejected local reposition because generated geometry did not materially change the firing line');
-        return rejected(displacement < MIN_PLANNED_MOVE_DISPLACEMENT ? 'reposition_displacement_below_minimum' : 'reposition_path_unreachable_or_zero_length', {
-          planRevision: plannedState.coordination.planRevision,
-          maneuverAgentId: agent.id,
-          supportAgentId: plannedState.squad.suppressorId,
-          origin,
-          target,
-          displacement: Number(displacement.toFixed(3)),
-          expectedTactic: 'regroup',
-        });
-      }
-      return accepted({
-        reason: 'planner_accepted_regroup_geometry_for_local_reposition',
-        planRevision: plannedState.coordination.planRevision,
-        maneuverAgentId: agent.id,
-        supportAgentId: plannedState.squad.suppressorId,
-        origin: { ...origin },
-        target: { ...target },
-        displacement: Number(displacement.toFixed(3)),
-        angleGainDegrees: null,
-        expectedTactic: 'regroup',
-      });
+      if (previousTactic === 'sweep') return rejected('local_reposition_deferred_during_coordinated_search');
+      const agent = state.agents.find((entry) => entry.id === pressuredAgentId && entry.alive);
+      if (agent === undefined) return rejected('planner_missing_reposition_owner');
+      const origin = { ...agent.position };
+      const threatOrigin = clonePoint(this.lastShotOriginByAgent.get(pressuredAgentId) ?? host.sharedLastKnownPosition ?? state.player)!;
+      const squadMatePositions = state.agents.filter((entry) => entry.alive && entry.id !== pressuredAgentId).map((entry) => entry.position);
+      const candidate = selectUnderFireReposition(tacticalWizardNavigationGrid, navCell(origin), navCell(threatOrigin), squadMatePositions, MIN_PLANNED_MOVE_DISPLACEMENT, 8);
+      if (candidate === null) return rejected('planner_missing_reposition_geometry', { maneuverAgentId: pressuredAgentId, origin });
+      if (!candidate.coveredFromThreat && ownerBand !== 'pinned') return rejected('reposition_no_covered_destination', { maneuverAgentId: pressuredAgentId, origin, target: candidate.point, displacement: Number(candidate.distance.toFixed(3)) });
+      const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(candidate.point));
+      if (candidate.distance < MIN_PLANNED_MOVE_DISPLACEMENT || path.length < 2) return rejected(candidate.distance < MIN_PLANNED_MOVE_DISPLACEMENT ? 'reposition_displacement_below_minimum' : 'reposition_path_unreachable_or_zero_length', { maneuverAgentId: pressuredAgentId, supportAgentId: host.suppressorId, origin, target: candidate.point, displacement: Number(candidate.distance.toFixed(3)) });
+      return accepted({ reason: 'planner_accepted_local_reposition_geometry', planRevision: previousPlanRevision + 1, maneuverAgentId: pressuredAgentId, supportAgentId: host.suppressorId, origin, target: { ...candidate.point }, displacement: Number(candidate.distance.toFixed(3)), angleGainDegrees: null, expectedTactic: previousTactic });
     }
-
-    if (action === 'regroup') {
-      if (host.tactic !== 'regroup') host.transitionTactic?.('regroup', reason, false);
-      const plannedState = this.simulation.getState();
-      return accepted({
-        reason: 'planner_accepted_contract_regroup',
-        planRevision: plannedState.coordination.planRevision,
-        maneuverAgentId: pressuredAgentId,
-        supportAgentId: plannedState.squad.suppressorId,
-        origin: null,
-        target: null,
-        displacement: null,
-        angleGainDegrees: null,
-        expectedTactic: 'regroup',
-      });
-    }
-
-    if (action === 'assault') {
-      if (host.tactic !== 'assault') host.transitionTactic?.('assault', reason, false);
-      const plannedState = this.simulation.getState();
-      if (!plannedState.agents.some((agent) => agent.alive && agent.role === 'assaulter' && agent.task === 'assault')) {
-        this.restoreTactic(previousTactic, 'planner rejected aggressive close because no assaulter received valid doctrine geometry');
-        return rejected('planner_missing_assault_owner', { planRevision: plannedState.coordination.planRevision, expectedTactic: 'assault' });
-      }
-      return accepted({
-        reason: 'planner_accepted_aggressive_close',
-        planRevision: plannedState.coordination.planRevision,
-        maneuverAgentId: plannedState.squad.moverId,
-        supportAgentId: plannedState.squad.suppressorId,
-        origin: null,
-        target: null,
-        displacement: null,
-        angleGainDegrees: null,
-        expectedTactic: 'assault',
-      });
-    }
-
+    if (action === 'regroup') return this.withTacticalPlanPreview('regroup', reason, () => { const plannedState = this.simulation.getState(); return accepted({ reason: 'planner_accepted_contract_regroup', planRevision: plannedState.coordination.planRevision, maneuverAgentId: pressuredAgentId, supportAgentId: plannedState.squad.suppressorId, origin: null, target: null, displacement: null, angleGainDegrees: null, expectedTactic: 'regroup' }); });
+    if (action === 'assault') return this.withTacticalPlanPreview('assault', reason, () => { const plannedState = this.simulation.getState(); if (!plannedState.agents.some((agent) => agent.alive && agent.role === 'assaulter' && agent.task === 'assault')) return rejected('planner_missing_assault_owner', { planRevision: plannedState.coordination.planRevision, expectedTactic: 'assault' }); return accepted({ reason: 'planner_accepted_aggressive_close', planRevision: plannedState.coordination.planRevision, maneuverAgentId: plannedState.squad.moverId, supportAgentId: plannedState.squad.suppressorId, origin: null, target: null, displacement: null, angleGainDegrees: null, expectedTactic: 'assault' }); });
     return rejected('no_pressure_response_action');
+  }
+
+  private withTacticalPlanPreview<T>(nextTactic: string, reason: string, evaluate: () => T): T {
+    const host = this.internal().tacticalHost;
+    const snapshot = this.captureHostPlanTransaction();
+    try {
+      if (host.tactic !== nextTactic) host.transitionTactic?.(nextTactic, `[preview] ${reason}`, false);
+      return evaluate();
+    } finally {
+      this.restoreHostPlanTransaction(snapshot);
+    }
+  }
+
+  private captureHostPlanTransaction(): HostPlanTransactionSnapshot {
+    const internal = this.internal();
+    const host = internal.tacticalHost;
+    const record = host as unknown as Record<string, unknown>;
+    const hostFieldNames = ['tactic', 'tacticStartedTick', 'tacticReason', 'maneuverCycle', 'boundingPhase', 'suppressorId', 'moverId', 'observerId', 'searchLeadId', 'searchCoverId', 'searchOverwatchId', 'coverSlots', 'planRevision', 'lastPlanReplanTick'];
+    const hostFields: Record<string, unknown> = {};
+    for (const key of hostFieldNames) hostFields[key] = record[key];
+    const eventLog = [...((record.eventLog as string[] | undefined) ?? [])];
+    const runLog = [...((record.runLog as unknown[] | undefined) ?? [])];
+    const runLogSequence = Number(record.runLogSequence ?? 0);
+    const members = host.members.map((member) => ({ id: member.id, fields: { ...(member as unknown as Record<string, unknown>) } }));
+    const contracts = internal.contracts === undefined ? [] : [...internal.contracts.entries()].map(([key, value]) => [key, value] as const);
+    return { hostFields, members, eventLog, runLog, runLogSequence, contracts };
+  }
+
+  private restoreHostPlanTransaction(snapshot: HostPlanTransactionSnapshot): void {
+    const internal = this.internal();
+    const host = internal.tacticalHost;
+    const record = host as unknown as Record<string, unknown>;
+    for (const [key, value] of Object.entries(snapshot.hostFields)) record[key] = value;
+    const currentEvents = (record.eventLog as string[] | undefined) ?? [];
+    currentEvents.splice(0, currentEvents.length, ...snapshot.eventLog);
+    const currentRunLog = (record.runLog as unknown[] | undefined) ?? [];
+    currentRunLog.splice(0, currentRunLog.length, ...snapshot.runLog);
+    record.runLogSequence = snapshot.runLogSequence;
+    for (const saved of snapshot.members) { const member = host.members.find((entry) => entry.id === saved.id); if (member !== undefined) Object.assign(member as unknown as Record<string, unknown>, saved.fields); }
+    if (internal.contracts !== undefined) { internal.contracts.clear(); for (const [key, value] of snapshot.contracts) internal.contracts.set(key, value); }
   }
 
   private commitPressureLease(state: TacticalWizardSimulationState, attempt: PlannerAttemptResult, pressuredAgentId: string, reason: string): void {
     const host = this.internal().tacticalHost;
     const tick = host.logicalTick;
+    if (attempt.candidateId === 'flank' || attempt.candidateId === 'regroup' || attempt.candidateId === 'assault') {
+      if (attempt.expectedTactic !== null && host.tactic !== attempt.expectedTactic) host.transitionTactic?.(attempt.expectedTactic, reason, false);
+    } else if (attempt.candidateId === 'reposition' && attempt.maneuverAgentId !== null && attempt.target !== null) {
+      const member = host.members.find((entry) => entry.id === attempt.maneuverAgentId);
+      if (member !== undefined) {
+        member.tacticalTarget = { ...attempt.target };
+        member.coverSlot = null;
+        member.coverState = 'moving';
+        host.planRevision = (host.planRevision ?? state.coordination.planRevision) + 1;
+        this.internal().contracts?.delete(member.id);
+        host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Tactical Planning committed one local reposition without replacing the squad doctrine.', { agentId: member.id, tactic: host.tactic, target: { ...attempt.target }, displacement: attempt.displacement, planRevision: host.planRevision });
+      }
+    }
+    const committedState = this.simulation.getState();
     const duration = attempt.candidateId === 'trade_fire' ? TRADE_FIRE_LEASE_TICKS : PRESSURE_RESPONSE_LEASE_TICKS;
-    const lease: PressureResponseLease = {
-      id: `pressure-${++this.responseSerial}`,
-      action: attempt.candidateId,
-      opportunity: attempt.opportunity,
-      pressuredAgentId,
-      maneuverAgentId: attempt.maneuverAgentId,
-      supportAgentId: attempt.supportAgentId,
-      origin: clonePoint(attempt.origin),
-      target: clonePoint(attempt.target),
-      startedTick: tick,
-      untilTick: tick + duration,
-      startedPressure: this.squadPressure(state),
-      startedBand: this.pressureBandByAgent.get(pressuredAgentId) ?? 'suppressed',
-      expectedTactic: attempt.expectedTactic,
-      worldRevision: this.world.view().geometryRevision,
-      planRevision: attempt.planRevision,
-      plannerTargetDisplacement: attempt.displacement,
-      plannerAngleGainDegrees: attempt.angleGainDegrees,
-      softStableTicks: 0,
-      reason,
-    };
+    const lease: PressureResponseLease = { id: `pressure-${++this.responseSerial}`, action: attempt.candidateId, opportunity: attempt.opportunity, pressuredAgentId, maneuverAgentId: attempt.maneuverAgentId, supportAgentId: attempt.supportAgentId, origin: clonePoint(attempt.origin), target: clonePoint(attempt.target), startedTick: tick, untilTick: tick + duration, startedPressure: this.squadPressure(committedState), startedBand: this.pressureBandByAgent.get(pressuredAgentId) ?? 'suppressed', expectedTactic: attempt.expectedTactic, worldRevision: this.world.view().geometryRevision, planRevision: committedState.coordination.planRevision, plannerTargetDisplacement: attempt.displacement, plannerAngleGainDegrees: attempt.angleGainDegrees, softStableTicks: 0, reason };
     this.activeResponse = lease;
     this.lastLeaseEscalationBand = lease.startedBand;
     this.lastPressureAction = lease.action;
@@ -861,23 +784,7 @@ export class TacticalWizardAdaptiveSimulation {
     this.pressureResponses += 1;
     this.responseCooldownUntilTick = lease.untilTick + PRESSURE_RESPONSE_COOLDOWN_TICKS;
     host.pushEvent(`T${tick}: IAUS ${lease.opportunity} accepted by Tactical Planning as ${lease.id} until T${lease.untilTick}.`);
-    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Tactical Planner accepted the IAUS opportunity; one bounded response lease now owns the committed response intent.', {
-      leaseId: lease.id,
-      action: lease.action,
-      opportunity: lease.opportunity,
-      pressuredAgentId: lease.pressuredAgentId,
-      maneuverAgentId: lease.maneuverAgentId,
-      supportAgentId: lease.supportAgentId,
-      origin: lease.origin,
-      target: lease.target,
-      displacement: lease.plannerTargetDisplacement,
-      angleGainDegrees: lease.plannerAngleGainDegrees,
-      planRevision: lease.planRevision,
-      startedTick: lease.startedTick,
-      untilTick: lease.untilTick,
-      expectedTactic: lease.expectedTactic,
-      worldRevision: lease.worldRevision,
-    });
+    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Tactical Planner accepted the IAUS opportunity; one bounded response lease now owns the committed response intent.', { leaseId: lease.id, action: lease.action, opportunity: lease.opportunity, pressuredAgentId: lease.pressuredAgentId, maneuverAgentId: lease.maneuverAgentId, supportAgentId: lease.supportAgentId, origin: lease.origin, target: lease.target, displacement: lease.plannerTargetDisplacement, angleGainDegrees: lease.plannerAngleGainDegrees, planRevision: lease.planRevision, startedTick: lease.startedTick, untilTick: lease.untilTick, expectedTactic: lease.expectedTactic, worldRevision: lease.worldRevision });
   }
 
   private maintainPressureResponse(state: TacticalWizardSimulationState): void {
@@ -900,6 +807,10 @@ export class TacticalWizardAdaptiveSimulation {
     }
     if (lease.worldRevision !== this.world.view().geometryRevision) {
       this.releasePressureResponse('world_geometry_changed', true);
+      return;
+    }
+    if (lease.action === 'reposition' && lease.expectedTactic !== null && host.tactic !== lease.expectedTactic) {
+      this.releasePressureResponse('base_tactic_changed_during_local_reposition', false);
       return;
     }
     if (lease.expectedTactic === 'flank' && host.tactic !== 'flank') {
@@ -947,19 +858,15 @@ export class TacticalWizardAdaptiveSimulation {
     const lease = this.activeResponse;
     if (lease === null) return;
     const host = this.internal().tacticalHost;
+    const shouldReseedLocalPlan = lease.action === 'reposition' && reason === 'reposition_completed' && host.alertState === 'active' && this.simulation.getState().recovery.phase === 'none';
     if (hardInvalidation) this.pressureHardInvalidations += 1;
-    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire response lease released.', {
-      leaseId: lease.id,
-      action: lease.action,
-      opportunity: lease.opportunity,
-      reason,
-      hardInvalidation,
-      heldTicks: Math.max(0, host.logicalTick - lease.startedTick),
-      softStableTicks: lease.softStableTicks,
-      pressureNow: Number(this.squadPressure(this.simulation.getState()).toFixed(3)),
-    });
+    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire response lease released.', { leaseId: lease.id, action: lease.action, opportunity: lease.opportunity, reason, hardInvalidation, heldTicks: Math.max(0, host.logicalTick - lease.startedTick), softStableTicks: lease.softStableTicks, pressureNow: Number(this.squadPressure(this.simulation.getState()).toFixed(3)) });
     this.activeResponse = null;
     this.lastLeaseEscalationBand = 'stable';
+    if (shouldReseedLocalPlan) {
+      host.refreshTacticalPlan?.();
+      host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Local reposition completed; Tactical Planning reseeded the unchanged squad doctrine from the new firing position.', { tactic: host.tactic, agentId: lease.maneuverAgentId });
+    }
   }
 
   private logLeaseEscalationIfNeeded(): void {
