@@ -1,4 +1,4 @@
-import type { GridPoint } from './navigation';
+import { findPath, type GridPoint } from './navigation';
 import {
   TacticalWizardSimulation,
   type GrenadeKind,
@@ -11,9 +11,11 @@ import {
   leaseStillOwnsResponse,
   localEffectForBand,
   nextPressureBand,
-  selectUnderFireReposition,
+  opportunityForPressureAction,
+  pressureReasonForAction,
   type FirePressureBand,
   type PressureLocalEffect,
+  type PressureOpportunityKind,
   type PressureResponseLease,
   type PressureTacticalAction,
 } from './incomingFirePressure';
@@ -36,6 +38,7 @@ export interface AdaptiveAgentPressureView {
 export interface AdaptivePressureLeaseView {
   readonly id: string;
   readonly action: PressureTacticalAction;
+  readonly opportunity: PressureOpportunityKind;
   readonly pressuredAgentId: string;
   readonly maneuverAgentId: string | null;
   readonly supportAgentId: string | null;
@@ -44,7 +47,37 @@ export interface AdaptivePressureLeaseView {
   readonly startedTick: number;
   readonly untilTick: number;
   readonly expectedTactic: string | null;
+  readonly planRevision: number;
+  readonly plannerTargetDisplacement: number | null;
+  readonly plannerAngleGainDegrees: number | null;
+  readonly softStableTicks: number;
   readonly reason: string;
+}
+
+export interface PressurePlannerAttemptView {
+  readonly candidateId: PressureTacticalAction;
+  readonly opportunity: PressureOpportunityKind;
+  readonly utilityScore: number;
+  readonly accepted: boolean;
+  readonly reason: string;
+  readonly planRevision: number;
+  readonly maneuverAgentId: string | null;
+  readonly target: GridPoint | null;
+  readonly displacement: number | null;
+  readonly angleGainDegrees: number | null;
+}
+
+export interface PressurePlannerTraceView {
+  readonly logicalTick: number;
+  readonly source: 'shot_evidence' | 'pressure_tick';
+  readonly currentTactic: string;
+  readonly currentPlanProgress: number;
+  readonly safeFireLanes: number;
+  readonly geometryQuality: number;
+  readonly reasonerSelectedAction: PressureTacticalAction;
+  readonly committedAction: PressureTacticalAction;
+  readonly candidateScores: readonly { readonly candidateId: PressureTacticalAction; readonly available: boolean; readonly score: number }[];
+  readonly attempts: readonly PressurePlannerAttemptView[];
 }
 
 export interface TacticalWizardAdaptiveState extends TacticalWizardSimulationState {
@@ -54,10 +87,16 @@ export interface TacticalWizardAdaptiveState extends TacticalWizardSimulationSta
     readonly squadPressure: number;
     readonly pressureBand: FirePressureBand;
     readonly agentPressure: readonly AdaptiveAgentPressureView[];
+    /** Active response only. When no lease owns a pressure response this is `none`. */
     readonly tacticalAction: PressureTacticalAction;
     readonly tacticalActionReason: string | null;
     readonly tacticalActionUntilTick: number | null;
     readonly activeResponseLease: AdaptivePressureLeaseView | null;
+    readonly lastTacticalAction: PressureTacticalAction;
+    readonly lastTacticalActionReason: string | null;
+    readonly lastTacticalActionTick: number | null;
+    readonly lastPlannerTrace: PressurePlannerTraceView | null;
+    readonly plannerRejections: number;
     readonly pressureResponses: number;
     readonly pressureProposalsDeferredByLease: number;
     readonly pressureHardInvalidations: number;
@@ -91,6 +130,9 @@ interface InternalHost {
   tactic: string;
   patrolIndex: number;
   sharedLastKnownPosition: GridPoint | null;
+  suppressorId: string | null;
+  moverId: string | null;
+  observerId: string | null;
   getPatrolTarget?: (member: InternalMember) => GridPoint;
   transitionTactic?: (next: string, reason: string, rotateRoles: boolean) => void;
   refreshTacticalPlan?: () => void;
@@ -105,21 +147,33 @@ interface InternalRuntimeAccess {
   replanRecoveryGeometry?: (state: TacticalWizardSimulationState, reason: string, force: boolean) => void;
 }
 
+interface PlannerAttemptResult extends PressurePlannerAttemptView {
+  readonly expectedTactic: string | null;
+  readonly origin: GridPoint | null;
+  readonly supportAgentId: string | null;
+}
+
 const FORMATION_ARRIVAL = 0.55;
 const FORMATION_CATCH_UP_TICKS = 10;
 const PRESSURE_DECAY_PER_SECOND = 0.14;
 const PRESSURE_RESPONSE_COOLDOWN_TICKS = 6;
 const PRESSURE_RESPONSE_LEASE_TICKS = 12;
 const TRADE_FIRE_LEASE_TICKS = 6;
+const RESPONSE_SOFT_RELEASE_STABLE_TICKS = 3;
+const TRADE_FIRE_SOFT_RELEASE_STABLE_TICKS = 2;
 const REPOSITION_ARRIVAL = 0.75;
+const MIN_PLANNED_MOVE_DISPLACEMENT = 2.75;
+const MIN_FLANK_ANGLE_GAIN_DEGREES = 18;
+const STRONG_FLANK_DISPLACEMENT = 4.5;
+const RECENT_FLANK_MEMORY_TICKS = 32;
+const MIN_REPEAT_FLANK_TARGET_NOVELTY = 2;
 
 /**
  * Tactical Wizard game-first adaptive combat sandbox.
  *
- * Incoming-fire pressure is deliberately a proposal source, not a second execution
- * authority. It may request one bounded response lease; subsequent bullets can raise
- * pressure but cannot repeatedly rebuild squad geometry until the lease completes,
- * expires or is hard-invalidated.
+ * IAUS is a Reasoner only. It ranks opportunities, Tactical Planning is the sole
+ * owner of roles/targets/geometry, a bounded lease preserves commitment, and the
+ * existing fixed hierarchy remains the only execution authority.
  */
 export class TacticalWizardAdaptiveSimulation {
   readonly stepSeconds: number;
@@ -142,25 +196,31 @@ export class TacticalWizardAdaptiveSimulation {
   private pressureResponses = 0;
   private pressureProposalsDeferredByLease = 0;
   private pressureHardInvalidations = 0;
+  private plannerRejections = 0;
   private lastPressureAction: PressureTacticalAction = 'none';
   private lastPressureActionReason: string | null = null;
+  private lastPressureActionTick: number | null = null;
+  private lastPlannerTrace: PressurePlannerTraceView | null = null;
   private activeResponse: PressureResponseLease | null = null;
   private lastLeaseEscalationBand: FirePressureBand = 'stable';
+  private lastCommittedAction: PressureTacticalAction = 'none';
+  private lastCommittedActionTick = -999;
+  private lastCommittedTarget: GridPoint | null = null;
+  private lastCommittedThreatAnchor: GridPoint | null = null;
 
   constructor() {
     this.world = new TacticalWizardDynamicCombatWorld();
     this.simulation = new TacticalWizardSimulation();
     this.stepSeconds = this.simulation.stepSeconds;
     this.agentMoveSpeed = this.simulation.agentMoveSpeed;
-    this.seedPressure(this.simulation.getState());
-    this.applyFormationHold(this.simulation.getState());
+    const state = this.simulation.getState();
+    this.seedPressure(state);
+    this.applyFormationHold(state);
+    this.updatePressureBands(this.simulation.getState());
   }
 
+  /** Observation only: state reads never change roles, targets, leases or counters. */
   getState(): TacticalWizardAdaptiveState {
-    const state = this.simulation.getState();
-    this.applyFormationHold(state);
-    this.updatePressureBands(state);
-    this.maintainPressureResponse(state);
     return this.decorate(this.simulation.getState());
   }
 
@@ -180,12 +240,21 @@ export class TacticalWizardAdaptiveSimulation {
     this.pressureResponses = 0;
     this.pressureProposalsDeferredByLease = 0;
     this.pressureHardInvalidations = 0;
+    this.plannerRejections = 0;
     this.lastPressureAction = 'none';
     this.lastPressureActionReason = null;
+    this.lastPressureActionTick = null;
+    this.lastPlannerTrace = null;
     this.activeResponse = null;
     this.lastLeaseEscalationBand = 'stable';
-    this.seedPressure(this.simulation.getState());
-    this.applyFormationHold(this.simulation.getState());
+    this.lastCommittedAction = 'none';
+    this.lastCommittedActionTick = -999;
+    this.lastCommittedTarget = null;
+    this.lastCommittedThreatAnchor = null;
+    const state = this.simulation.getState();
+    this.seedPressure(state);
+    this.applyFormationHold(state);
+    this.updatePressureBands(this.simulation.getState());
     return this.getState();
   }
 
@@ -199,9 +268,10 @@ export class TacticalWizardAdaptiveSimulation {
     this.simulation.advance(delta);
     const state = this.simulation.getState();
     this.applyFormationHold(state);
-    this.updatePressureBands(state);
-    this.maintainPressureResponse(state);
-    if (state.logicalTick !== beforeTick) this.evaluatePressureProposal(this.simulation.getState(), false);
+    this.updatePressureBands(this.simulation.getState());
+    this.maintainPressureResponse(this.simulation.getState());
+    const afterMaintenance = this.simulation.getState();
+    if (afterMaintenance.logicalTick !== beforeTick) this.evaluatePressureProposal(afterMaintenance, false);
     return this.getState();
   }
 
@@ -241,6 +311,7 @@ export class TacticalWizardAdaptiveSimulation {
       this.registerBlastPressure(point, 3.2, 0.18);
     }
     this.updatePressureBands(this.simulation.getState());
+    this.maintainPressureResponse(this.simulation.getState());
     this.evaluatePressureProposal(this.simulation.getState(), true);
     return true;
   }
@@ -251,12 +322,16 @@ export class TacticalWizardAdaptiveSimulation {
 
   setAgentVitals(agentId: string, values: { readonly health?: number }): boolean {
     const changed = this.simulation.setAgentVitals(agentId, values);
-    if (changed) this.maintainPressureResponse(this.simulation.getState());
+    if (changed) {
+      this.updatePressureBands(this.simulation.getState());
+      this.maintainPressureResponse(this.simulation.getState());
+    }
     return changed;
   }
 
   applyGrenadeDoctrineForTest(kind: GrenadeKind, center: GridPoint, ownerId?: string): void {
     this.simulation.applyGrenadeDoctrineForTest(kind, center, ownerId);
+    this.maintainPressureResponse(this.simulation.getState());
   }
 
   injectIncomingFireForTest(agentId: string, from: GridPoint): boolean {
@@ -267,12 +342,14 @@ export class TacticalWizardAdaptiveSimulation {
     if (agent !== undefined) this.recordIncomingDirection(agentId, agent.position, from, 1);
     this.raisePressure(agentId, 0.42);
     this.updatePressureBands(this.simulation.getState());
+    this.maintainPressureResponse(this.simulation.getState());
     this.evaluatePressureProposal(this.simulation.getState(), true);
     return true;
   }
 
   setEnemiesEnabled(enabled: boolean): void {
     if (this.enemiesEnabled === enabled) return;
+    if (!enabled && this.activeResponse !== null) this.releasePressureResponse('enemy_simulation_paused', false);
     this.enemiesEnabled = enabled;
     const host = this.internal().tacticalHost;
     host.pushEvent(`T${host.logicalTick}: combat sandbox enemies ${enabled ? 'enabled' : 'paused by test control'}.`);
@@ -297,6 +374,11 @@ export class TacticalWizardAdaptiveSimulation {
       holdGroundBias: normalized.holdGroundBias,
       counterManeuverBias: normalized.counterManeuverBias,
       breakContactBias: normalized.breakContactBias,
+      utilityTradeFireWeight: normalized.utilityTradeFireWeight,
+      utilityRepositionWeight: normalized.utilityRepositionWeight,
+      utilityFlankWeight: normalized.utilityFlankWeight,
+      utilityRegroupWeight: normalized.utilityRegroupWeight,
+      utilityAssaultWeight: normalized.utilityAssaultWeight,
     });
   }
 
@@ -309,30 +391,55 @@ export class TacticalWizardAdaptiveSimulation {
       localEffect: localEffectForBand(this.pressureBandByAgent.get(agent.id) ?? 'stable'),
     }));
     const squadPressure = this.squadPressure(base);
+    const active = this.activeResponse;
+    const attention = base.perceptionIntegration.attention.map((sample) => {
+      const agent = base.agents.find((entry) => entry.id === sample.agentId);
+      if (agent?.targetVisible !== true) return sample;
+      const anchor = clonePoint(base.contactTrack.lastConfirmedPosition ?? base.player)!;
+      return {
+        ...sample,
+        mode: 'track_visual' as const,
+        anchor,
+        scanPhase: 0,
+        facing: { ...agent.facing },
+        lookTarget: { ...anchor },
+      };
+    });
     return {
       ...base,
+      perceptionIntegration: { ...base.perceptionIntegration, attention },
       adaptiveCombat: {
         enemiesEnabled: this.enemiesEnabled,
         profile: { ...this.profile },
         squadPressure: Number(squadPressure.toFixed(3)),
         pressureBand: this.squadBand,
         agentPressure: pressures,
-        tacticalAction: this.activeResponse?.action ?? this.lastPressureAction,
-        tacticalActionReason: this.activeResponse?.reason ?? this.lastPressureActionReason,
-        tacticalActionUntilTick: this.activeResponse?.untilTick ?? null,
-        activeResponseLease: this.activeResponse === null ? null : {
-          id: this.activeResponse.id,
-          action: this.activeResponse.action,
-          pressuredAgentId: this.activeResponse.pressuredAgentId,
-          maneuverAgentId: this.activeResponse.maneuverAgentId,
-          supportAgentId: this.activeResponse.supportAgentId,
-          origin: clonePoint(this.activeResponse.origin),
-          target: clonePoint(this.activeResponse.target),
-          startedTick: this.activeResponse.startedTick,
-          untilTick: this.activeResponse.untilTick,
-          expectedTactic: this.activeResponse.expectedTactic,
-          reason: this.activeResponse.reason,
+        tacticalAction: active?.action ?? 'none',
+        tacticalActionReason: active?.reason ?? null,
+        tacticalActionUntilTick: active?.untilTick ?? null,
+        activeResponseLease: active === null ? null : {
+          id: active.id,
+          action: active.action,
+          opportunity: active.opportunity,
+          pressuredAgentId: active.pressuredAgentId,
+          maneuverAgentId: active.maneuverAgentId,
+          supportAgentId: active.supportAgentId,
+          origin: clonePoint(active.origin),
+          target: clonePoint(active.target),
+          startedTick: active.startedTick,
+          untilTick: active.untilTick,
+          expectedTactic: active.expectedTactic,
+          planRevision: active.planRevision,
+          plannerTargetDisplacement: active.plannerTargetDisplacement,
+          plannerAngleGainDegrees: active.plannerAngleGainDegrees,
+          softStableTicks: active.softStableTicks,
+          reason: active.reason,
         },
+        lastTacticalAction: this.lastPressureAction,
+        lastTacticalActionReason: this.lastPressureActionReason,
+        lastTacticalActionTick: this.lastPressureActionTick,
+        lastPlannerTrace: clonePlannerTrace(this.lastPlannerTrace),
+        plannerRejections: this.plannerRejections,
         pressureResponses: this.pressureResponses,
         pressureProposalsDeferredByLease: this.pressureProposalsDeferredByLease,
         pressureHardInvalidations: this.pressureHardInvalidations,
@@ -435,7 +542,7 @@ export class TacticalWizardAdaptiveSimulation {
     const tick = host.logicalTick;
     if (this.activeResponse !== null && leaseStillOwnsResponse(this.activeResponse, tick)) {
       if (fromShot) this.pressureProposalsDeferredByLease += 1;
-      this.logLeaseEscalationIfNeeded(state);
+      this.logLeaseEscalationIfNeeded();
       return;
     }
     if (this.activeResponse !== null) this.releasePressureResponse('lease_expired', false);
@@ -446,11 +553,14 @@ export class TacticalWizardAdaptiveSimulation {
     const pressured = living
       .map((agent) => ({ agent, pressure: this.pressureByAgent.get(agent.id) ?? 0, band: this.pressureBandByAgent.get(agent.id) ?? 'stable' }))
       .filter((entry) => entry.band === 'suppressed' || entry.band === 'pinned')
-      .sort((a, b) => b.pressure - a.pressure || a.agent.id.localeCompare(b.agent.id));
+      .sort((a, b) => b.pressure - a.pressure || a.agent.id.localeCompare(b.agent.id, 'en'));
     if (pressured.length === 0) return;
 
     const primary = pressured[0]!;
     const pressure = this.squadPressure(state);
+    const planProgress = this.currentPlanProgress(state);
+    const geometryQuality = this.currentGeometryQuality(state, planProgress);
+    const recentGeometryNovelty = this.recentGeometryNovelty(host.sharedLastKnownPosition);
     const roll = deterministicPressureRoll(this.profile.id, tick, this.responseSerial + pressured.length);
     const proposal = choosePressureProposal({
       band: primary.band,
@@ -459,108 +569,310 @@ export class TacticalWizardAdaptiveSimulation {
       livingCount: living.length,
       pressuredCount: pressured.length,
       currentTactic: host.tactic,
+      currentPlanProgress: planProgress,
+      safeFireLanes: state.safeFireLanes,
+      geometryQuality,
+      currentTacticTicks: state.squad.tacticTicks,
+      recentAction: this.lastCommittedAction,
+      recentActionAgeTicks: tick - this.lastCommittedActionTick,
+      recentGeometryNovelty,
       profile: this.profile,
       roll,
     });
-    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire pressure submitted one tactical response proposal to the active-plan lease gate.', {
+
+    const candidates = [...proposal.utility.candidates]
+      .filter((entry) => entry.available)
+      .sort((a, b) => b.score - a.score || a.candidateId.localeCompare(b.candidateId, 'en'));
+    const attempts: PressurePlannerAttemptView[] = [];
+    let committedAction: PressureTacticalAction = 'none';
+
+    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'IAUS ranked incoming-fire opportunities; Tactical Planning now validates role and geometry ownership.', {
       pressure: Number(pressure.toFixed(3)),
       band: primary.band,
-      action: proposal.action,
+      reasonerWinner: proposal.action,
       pressuredAgentId: proposal.pressuredAgentId,
       currentTactic: host.tactic,
-      activeLease: null,
+      currentPlanProgress: Number(planProgress.toFixed(3)),
+      safeFireLanes: state.safeFireLanes,
+      geometryQuality: Number(geometryQuality.toFixed(3)),
       source: fromShot ? 'shot_evidence' : 'pressure_tick',
+      candidates: candidates.map((entry) => `${entry.candidateId}:${entry.score.toFixed(3)}`).join('|'),
     });
-    this.commitPressureProposal(state, proposal.action, proposal.pressuredAgentId, proposal.reason);
+
+    for (const candidate of candidates) {
+      const reason = pressureReasonForAction(candidate.candidateId, primary.band, pressure, this.profile, proposal.utility);
+      const attempt = this.tryCommitPressureCandidate(state, candidate.candidateId, primary.agent.id, candidate.score, reason);
+      attempts.push(attempt);
+      if (attempt.accepted) {
+        this.commitPressureLease(state, attempt, primary.agent.id, reason);
+        committedAction = candidate.candidateId;
+        break;
+      }
+      this.plannerRejections += 1;
+      host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Tactical Planner rejected an IAUS candidate; the next ranked opportunity may be considered.', {
+        candidate: candidate.candidateId,
+        utilityScore: Number(candidate.score.toFixed(3)),
+        reason: attempt.reason,
+        planRevision: attempt.planRevision,
+        target: attempt.target,
+        displacement: attempt.displacement,
+        angleGainDegrees: attempt.angleGainDegrees,
+      });
+    }
+
+    this.lastPlannerTrace = {
+      logicalTick: tick,
+      source: fromShot ? 'shot_evidence' : 'pressure_tick',
+      currentTactic: state.squad.tactic,
+      currentPlanProgress: Number(planProgress.toFixed(3)),
+      safeFireLanes: state.safeFireLanes,
+      geometryQuality: Number(geometryQuality.toFixed(3)),
+      reasonerSelectedAction: proposal.action,
+      committedAction,
+      candidateScores: proposal.utility.candidates.map((entry) => ({ candidateId: entry.candidateId, available: entry.available, score: Number(entry.score.toFixed(4)) })),
+      attempts: attempts.map(clonePlannerAttempt),
+    };
+
+    if (committedAction === 'none') {
+      this.responseCooldownUntilTick = tick + 2;
+      host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'IAUS produced candidates but Tactical Planning rejected all executable geometry; current plan remains authoritative.', {
+        reasonerWinner: proposal.action,
+        attempts: attempts.map((entry) => `${entry.candidateId}:${entry.reason}`).join('|'),
+      });
+    }
   }
 
-  private commitPressureProposal(state: TacticalWizardSimulationState, action: PressureTacticalAction, pressuredAgentId: string, reason: string): void {
+  private tryCommitPressureCandidate(
+    state: TacticalWizardSimulationState,
+    action: PressureTacticalAction,
+    pressuredAgentId: string,
+    utilityScore: number,
+    reason: string,
+  ): PlannerAttemptResult {
     const host = this.internal().tacticalHost;
-    const tick = host.logicalTick;
-    const pressured = state.agents.find((agent) => agent.id === pressuredAgentId && agent.alive);
-    if (pressured === undefined) return;
-    const living = state.agents.filter((agent) => agent.alive);
-    const stableManeuver = living
-      .filter((agent) => agent.id !== pressuredAgentId)
-      .sort((a, b) => (this.pressureByAgent.get(a.id) ?? 0) - (this.pressureByAgent.get(b.id) ?? 0) || a.id.localeCompare(b.id))[0] ?? pressured;
-    let maneuverAgentId: string | null = null;
-    let supportAgentId: string | null = null;
-    let target: GridPoint | null = null;
-    let origin: GridPoint | null = null;
-    let expectedTactic: string | null = host.tactic;
+    const previousTactic = host.tactic;
+    const previousPlanRevision = state.coordination.planRevision;
+    const opportunity = opportunityForPressureAction(action);
+    const rejected = (why: string, values: Partial<PlannerAttemptResult> = {}): PlannerAttemptResult => ({
+      candidateId: action,
+      opportunity,
+      utilityScore,
+      accepted: false,
+      reason: why,
+      planRevision: values.planRevision ?? previousPlanRevision,
+      maneuverAgentId: values.maneuverAgentId ?? null,
+      supportAgentId: values.supportAgentId ?? null,
+      origin: clonePoint(values.origin ?? null),
+      target: clonePoint(values.target ?? null),
+      displacement: values.displacement ?? null,
+      angleGainDegrees: values.angleGainDegrees ?? null,
+      expectedTactic: values.expectedTactic ?? previousTactic,
+    });
+    const accepted = (values: Omit<PlannerAttemptResult, 'candidateId' | 'opportunity' | 'utilityScore' | 'accepted'>): PlannerAttemptResult => ({
+      candidateId: action,
+      opportunity,
+      utilityScore,
+      accepted: true,
+      ...values,
+    });
 
-    if (action === 'reposition') {
-      const threatOrigin = this.lastShotOriginByAgent.get(pressuredAgentId) ?? state.player;
-      const candidate = selectUnderFireReposition(
-        tacticalWizardNavigationGrid,
-        pressured.position,
-        threatOrigin,
-        living.filter((agent) => agent.id !== pressuredAgentId).map((agent) => agent.position),
-      );
-      if (candidate === null) {
-        action = living.length >= 2 ? 'regroup' : 'trade_fire';
-      } else {
-        maneuverAgentId = pressuredAgentId;
-        supportAgentId = stableManeuver.id === pressuredAgentId ? null : stableManeuver.id;
-        origin = { ...pressured.position };
-        target = { ...candidate.point };
-        expectedTactic = host.tactic;
-      }
+    if (action === 'trade_fire') {
+      return accepted({
+        reason: 'planner_accepted_hold_current_plan',
+        planRevision: state.coordination.planRevision,
+        maneuverAgentId: null,
+        supportAgentId: host.suppressorId,
+        origin: null,
+        target: null,
+        displacement: null,
+        angleGainDegrees: null,
+        expectedTactic: host.tactic,
+      });
     }
 
     if (action === 'flank') {
-      maneuverAgentId = stableManeuver.id;
-      supportAgentId = living.find((agent) => agent.id !== maneuverAgentId && agent.alive)?.id ?? null;
+      if (host.tactic === 'flank' && this.currentPlanProgress(state) < 0.96) return rejected('current_flank_already_committed');
       host.transitionTactic?.('flank', reason, false);
-      const member = host.members.find((entry) => entry.id === maneuverAgentId);
-      if (member !== undefined) {
-        member.role = 'flanker';
-        member.task = 'flank_to_cover';
-        target = clonePoint(member.tacticalTarget);
-        origin = { ...member.position };
+      const plannedState = this.simulation.getState();
+      const canonical = plannedState.agents.filter((agent) => agent.alive && agent.role === 'flanker' && agent.task === 'flank_to_cover');
+      if (canonical.length !== 1) {
+        this.restoreTactic(previousTactic, 'planner rejected counter-maneuver because canonical flanker ownership was ambiguous');
+        return rejected('canonical_flanker_count_invalid', { planRevision: plannedState.coordination.planRevision });
       }
-      expectedTactic = 'flank';
-    } else if (action === 'regroup') {
-      host.transitionTactic?.('regroup', reason, false);
-      expectedTactic = 'regroup';
-    } else if (action === 'assault') {
-      host.transitionTactic?.('assault', reason, false);
-      expectedTactic = 'assault';
+      const flanker = canonical[0]!;
+      const origin = state.agents.find((agent) => agent.id === flanker.id)?.position ?? flanker.position;
+      const target = flanker.tacticalTarget;
+      if (target === null) {
+        this.restoreTactic(previousTactic, 'planner rejected counter-maneuver because no flank target was produced');
+        return rejected('planner_missing_flank_target', { planRevision: plannedState.coordination.planRevision, maneuverAgentId: flanker.id, origin });
+      }
+      const displacement = distance(origin, target);
+      const threat = host.sharedLastKnownPosition ?? state.player;
+      const angleGainDegrees = flankAngleGainDegrees(origin, target, threat);
+      const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(target));
+      const recentRepeat = this.lastCommittedAction === 'flank' && host.logicalTick - this.lastCommittedActionTick < RECENT_FLANK_MEMORY_TICKS;
+      const targetNovelty = this.lastCommittedTarget === null ? Number.POSITIVE_INFINITY : distance(target, this.lastCommittedTarget);
+      const contactNovelty = this.recentGeometryNovelty(host.sharedLastKnownPosition);
+      const invalidReason = displacement < MIN_PLANNED_MOVE_DISPLACEMENT
+        ? 'flank_displacement_below_minimum'
+        : path.length < 2
+          ? 'flank_path_unreachable_or_zero_length'
+          : angleGainDegrees < MIN_FLANK_ANGLE_GAIN_DEGREES && displacement < STRONG_FLANK_DISPLACEMENT
+            ? 'flank_angle_gain_too_small'
+            : recentRepeat && targetNovelty < MIN_REPEAT_FLANK_TARGET_NOVELTY && contactNovelty < 0.42
+              ? 'recent_flank_repeats_same_geometry'
+              : null;
+      if (invalidReason !== null) {
+        this.restoreTactic(previousTactic, `planner rejected counter-maneuver: ${invalidReason}`);
+        return rejected(invalidReason, {
+          planRevision: plannedState.coordination.planRevision,
+          maneuverAgentId: flanker.id,
+          supportAgentId: plannedState.squad.suppressorId,
+          origin,
+          target,
+          displacement: Number(displacement.toFixed(3)),
+          angleGainDegrees: Number(angleGainDegrees.toFixed(2)),
+          expectedTactic: 'flank',
+        });
+      }
+      return accepted({
+        reason: 'planner_accepted_canonical_flank_geometry',
+        planRevision: plannedState.coordination.planRevision,
+        maneuverAgentId: flanker.id,
+        supportAgentId: plannedState.squad.suppressorId,
+        origin: { ...origin },
+        target: { ...target },
+        displacement: Number(displacement.toFixed(3)),
+        angleGainDegrees: Number(angleGainDegrees.toFixed(2)),
+        expectedTactic: 'flank',
+      });
     }
 
-    const duration = action === 'trade_fire' ? TRADE_FIRE_LEASE_TICKS : PRESSURE_RESPONSE_LEASE_TICKS;
+    if (action === 'reposition') {
+      if (host.tactic !== 'regroup') host.transitionTactic?.('regroup', reason, false);
+      const plannedState = this.simulation.getState();
+      const agent = plannedState.agents.find((entry) => entry.id === pressuredAgentId && entry.alive);
+      const origin = state.agents.find((entry) => entry.id === pressuredAgentId)?.position ?? agent?.position ?? null;
+      const target = agent?.tacticalTarget ?? null;
+      if (agent === undefined || origin === null || target === null) {
+        if (previousTactic !== 'regroup') this.restoreTactic(previousTactic, 'planner rejected local reposition because regroup geometry was unavailable');
+        return rejected('planner_missing_reposition_geometry', { planRevision: plannedState.coordination.planRevision, maneuverAgentId: pressuredAgentId, origin, target, expectedTactic: 'regroup' });
+      }
+      const displacement = distance(origin, target);
+      const path = findPath(tacticalWizardNavigationGrid, navCell(origin), navCell(target));
+      if (displacement < MIN_PLANNED_MOVE_DISPLACEMENT || path.length < 2) {
+        if (previousTactic !== 'regroup') this.restoreTactic(previousTactic, 'planner rejected local reposition because generated geometry did not materially change the firing line');
+        return rejected(displacement < MIN_PLANNED_MOVE_DISPLACEMENT ? 'reposition_displacement_below_minimum' : 'reposition_path_unreachable_or_zero_length', {
+          planRevision: plannedState.coordination.planRevision,
+          maneuverAgentId: agent.id,
+          supportAgentId: plannedState.squad.suppressorId,
+          origin,
+          target,
+          displacement: Number(displacement.toFixed(3)),
+          expectedTactic: 'regroup',
+        });
+      }
+      return accepted({
+        reason: 'planner_accepted_regroup_geometry_for_local_reposition',
+        planRevision: plannedState.coordination.planRevision,
+        maneuverAgentId: agent.id,
+        supportAgentId: plannedState.squad.suppressorId,
+        origin: { ...origin },
+        target: { ...target },
+        displacement: Number(displacement.toFixed(3)),
+        angleGainDegrees: null,
+        expectedTactic: 'regroup',
+      });
+    }
+
+    if (action === 'regroup') {
+      if (host.tactic !== 'regroup') host.transitionTactic?.('regroup', reason, false);
+      const plannedState = this.simulation.getState();
+      return accepted({
+        reason: 'planner_accepted_contract_regroup',
+        planRevision: plannedState.coordination.planRevision,
+        maneuverAgentId: pressuredAgentId,
+        supportAgentId: plannedState.squad.suppressorId,
+        origin: null,
+        target: null,
+        displacement: null,
+        angleGainDegrees: null,
+        expectedTactic: 'regroup',
+      });
+    }
+
+    if (action === 'assault') {
+      if (host.tactic !== 'assault') host.transitionTactic?.('assault', reason, false);
+      const plannedState = this.simulation.getState();
+      if (!plannedState.agents.some((agent) => agent.alive && agent.role === 'assaulter' && agent.task === 'assault')) {
+        this.restoreTactic(previousTactic, 'planner rejected aggressive close because no assaulter received valid doctrine geometry');
+        return rejected('planner_missing_assault_owner', { planRevision: plannedState.coordination.planRevision, expectedTactic: 'assault' });
+      }
+      return accepted({
+        reason: 'planner_accepted_aggressive_close',
+        planRevision: plannedState.coordination.planRevision,
+        maneuverAgentId: plannedState.squad.moverId,
+        supportAgentId: plannedState.squad.suppressorId,
+        origin: null,
+        target: null,
+        displacement: null,
+        angleGainDegrees: null,
+        expectedTactic: 'assault',
+      });
+    }
+
+    return rejected('no_pressure_response_action');
+  }
+
+  private commitPressureLease(state: TacticalWizardSimulationState, attempt: PlannerAttemptResult, pressuredAgentId: string, reason: string): void {
+    const host = this.internal().tacticalHost;
+    const tick = host.logicalTick;
+    const duration = attempt.candidateId === 'trade_fire' ? TRADE_FIRE_LEASE_TICKS : PRESSURE_RESPONSE_LEASE_TICKS;
     const lease: PressureResponseLease = {
       id: `pressure-${++this.responseSerial}`,
-      action,
+      action: attempt.candidateId,
+      opportunity: attempt.opportunity,
       pressuredAgentId,
-      maneuverAgentId,
-      supportAgentId,
-      origin,
-      target,
+      maneuverAgentId: attempt.maneuverAgentId,
+      supportAgentId: attempt.supportAgentId,
+      origin: clonePoint(attempt.origin),
+      target: clonePoint(attempt.target),
       startedTick: tick,
       untilTick: tick + duration,
       startedPressure: this.squadPressure(state),
       startedBand: this.pressureBandByAgent.get(pressuredAgentId) ?? 'suppressed',
-      expectedTactic,
+      expectedTactic: attempt.expectedTactic,
       worldRevision: this.world.view().geometryRevision,
+      planRevision: attempt.planRevision,
+      plannerTargetDisplacement: attempt.displacement,
+      plannerAngleGainDegrees: attempt.angleGainDegrees,
+      softStableTicks: 0,
       reason,
     };
     this.activeResponse = lease;
     this.lastLeaseEscalationBand = lease.startedBand;
-    this.lastPressureAction = action;
+    this.lastPressureAction = lease.action;
     this.lastPressureActionReason = reason;
+    this.lastPressureActionTick = tick;
+    this.lastCommittedAction = lease.action;
+    this.lastCommittedActionTick = tick;
+    this.lastCommittedTarget = clonePoint(lease.target);
+    this.lastCommittedThreatAnchor = clonePoint(host.sharedLastKnownPosition);
     this.pressureResponses += 1;
     this.responseCooldownUntilTick = lease.untilTick + PRESSURE_RESPONSE_COOLDOWN_TICKS;
-    this.applyLeaseGeometry(lease);
-    host.pushEvent(`T${tick}: incoming-fire response committed ${action} as ${lease.id} until T${lease.untilTick}.`);
-    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire response lease committed; ordinary shots may raise pressure but cannot replace its geometry.', {
+    host.pushEvent(`T${tick}: IAUS ${lease.opportunity} accepted by Tactical Planning as ${lease.id} until T${lease.untilTick}.`);
+    host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Tactical Planner accepted the IAUS opportunity; one bounded response lease now owns the committed response intent.', {
       leaseId: lease.id,
       action: lease.action,
+      opportunity: lease.opportunity,
       pressuredAgentId: lease.pressuredAgentId,
       maneuverAgentId: lease.maneuverAgentId,
       supportAgentId: lease.supportAgentId,
       origin: lease.origin,
       target: lease.target,
+      displacement: lease.plannerTargetDisplacement,
+      angleGainDegrees: lease.plannerAngleGainDegrees,
+      planRevision: lease.planRevision,
       startedTick: lease.startedTick,
       untilTick: lease.untilTick,
       expectedTactic: lease.expectedTactic,
@@ -603,44 +915,32 @@ export class TacticalWizardAdaptiveSimulation {
       this.releasePressureResponse('assault_completed_or_replanned', false);
       return;
     }
-    if (lease.action === 'reposition' && lease.maneuverAgentId !== null && lease.target !== null) {
-      const agent = state.agents.find((entry) => entry.id === lease.maneuverAgentId);
-      if (agent !== undefined && distance(agent.position, lease.target) <= REPOSITION_ARRIVAL) {
-        this.releasePressureResponse('reposition_completed', false);
-        return;
-      }
-    }
-    if (!leaseStillOwnsResponse(lease, host.logicalTick)) {
-      this.releasePressureResponse('lease_expired', false);
+
+    const ownerBand = this.pressureBandByAgent.get(lease.pressuredAgentId) ?? 'stable';
+    const stableNow = ownerBand === 'stable' && this.squadPressure(state) < 0.22;
+    const updated: PressureResponseLease = { ...lease, softStableTicks: stableNow ? lease.softStableTicks + 1 : 0 };
+    this.activeResponse = updated;
+    const geometryComplete = this.responseGeometryComplete(state, updated);
+
+    if (updated.action === 'reposition' && geometryComplete) {
+      this.releasePressureResponse('reposition_completed', false);
       return;
     }
-    this.applyLeaseGeometry(lease);
+    if (updated.action === 'trade_fire' && updated.softStableTicks >= TRADE_FIRE_SOFT_RELEASE_STABLE_TICKS) {
+      this.releasePressureResponse('pressure_stabilized_hold_complete', false);
+      return;
+    }
+    if (geometryComplete && updated.softStableTicks >= RESPONSE_SOFT_RELEASE_STABLE_TICKS) {
+      this.releasePressureResponse('response_goal_completed_under_stable_pressure', false);
+      return;
+    }
+    if (!leaseStillOwnsResponse(updated, host.logicalTick)) this.releasePressureResponse('lease_expired', false);
   }
 
-  private applyLeaseGeometry(lease: PressureResponseLease): void {
-    const host = this.internal().tacticalHost;
-    if (lease.action === 'reposition' && lease.maneuverAgentId !== null && lease.target !== null) {
-      const member = host.members.find((entry) => entry.id === lease.maneuverAgentId);
-      if (member !== undefined) {
-        member.selectedIntent = 'reposition_under_fire';
-        member.role = 'support';
-        member.task = 'regroup';
-        member.tacticalTarget = { ...lease.target };
-        member.coverSlot = null;
-        member.coverState = 'moving';
-        member.opportunityPurpose = 'none';
-      }
-      return;
-    }
-    if (lease.action === 'flank' && lease.maneuverAgentId !== null) {
-      const flanker = host.members.find((entry) => entry.id === lease.maneuverAgentId);
-      if (flanker !== undefined) {
-        flanker.role = 'flanker';
-        flanker.task = 'flank_to_cover';
-        if (lease.target !== null) flanker.tacticalTarget = { ...lease.target };
-        flanker.opportunityPurpose = 'flank';
-      }
-    }
+  private responseGeometryComplete(state: TacticalWizardSimulationState, lease: PressureResponseLease): boolean {
+    if (lease.maneuverAgentId === null || lease.target === null) return lease.action === 'trade_fire' || lease.action === 'regroup' || lease.action === 'assault';
+    const agent = state.agents.find((entry) => entry.id === lease.maneuverAgentId);
+    return agent !== undefined && distance(agent.position, lease.target) <= REPOSITION_ARRIVAL;
   }
 
   private releasePressureResponse(reason: string, hardInvalidation: boolean): void {
@@ -651,17 +951,18 @@ export class TacticalWizardAdaptiveSimulation {
     host.log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Incoming-fire response lease released.', {
       leaseId: lease.id,
       action: lease.action,
+      opportunity: lease.opportunity,
       reason,
       hardInvalidation,
       heldTicks: Math.max(0, host.logicalTick - lease.startedTick),
+      softStableTicks: lease.softStableTicks,
       pressureNow: Number(this.squadPressure(this.simulation.getState()).toFixed(3)),
     });
     this.activeResponse = null;
     this.lastLeaseEscalationBand = 'stable';
-    if (lease.action === 'reposition' && host.alertState === 'active') host.refreshTacticalPlan?.();
   }
 
-  private logLeaseEscalationIfNeeded(state: TacticalWizardSimulationState): void {
+  private logLeaseEscalationIfNeeded(): void {
     const lease = this.activeResponse;
     if (lease === null) return;
     const band = this.pressureBandByAgent.get(lease.pressuredAgentId) ?? 'stable';
@@ -675,6 +976,50 @@ export class TacticalWizardAdaptiveSimulation {
       band,
       leaseUntilTick: lease.untilTick,
     });
+  }
+
+  private currentPlanProgress(state: TacticalWizardSimulationState): number {
+    const living = state.agents.filter((agent) => agent.alive);
+    if (living.length === 0 || state.squad.alertState !== 'active') return 0;
+    if (state.squad.tactic === 'sweep') {
+      const searchers = living.filter((agent) => agent.task === 'search_sector');
+      return searchers.length === 0 ? 0 : clamp01(searchers.reduce((sum, agent) => sum + agent.searchProgress, 0) / searchers.length);
+    }
+    const relevant = state.squad.tactic === 'flank'
+      ? living.filter((agent) => agent.role === 'flanker')
+      : state.squad.tactic === 'crossfire'
+        ? living.filter((agent) => agent.role === 'crossfire')
+        : state.squad.tactic === 'assault'
+          ? living.filter((agent) => agent.role === 'assaulter')
+          : state.squad.tactic === 'bounding'
+            ? living.filter((agent) => agent.role === 'mover')
+            : living;
+    if (relevant.length === 0) return 0;
+    return clamp01(relevant.reduce((sum, agent) => {
+      if (agent.tacticalTarget === null) return sum;
+      const remaining = distance(agent.position, agent.tacticalTarget);
+      return sum + clamp01(1 - remaining / 6);
+    }, 0) / relevant.length);
+  }
+
+  private currentGeometryQuality(state: TacticalWizardSimulationState, planProgress: number): number {
+    const laneQuality = clamp01(state.safeFireLanes / 2);
+    const spreadQuality = clamp01(state.squad.spread / 10);
+    if (state.squad.tactic === 'crossfire') return clamp01(laneQuality * 0.55 + planProgress * 0.3 + spreadQuality * 0.15);
+    if (state.squad.tactic === 'flank') return clamp01(laneQuality * 0.35 + planProgress * 0.42 + spreadQuality * 0.23);
+    if (state.squad.tactic === 'assault') return clamp01(laneQuality * 0.35 + planProgress * 0.5 + 0.15);
+    return clamp01(laneQuality * 0.25 + planProgress * 0.45 + spreadQuality * 0.15 + 0.15);
+  }
+
+  private recentGeometryNovelty(currentThreat: GridPoint | null): number {
+    if (this.lastCommittedThreatAnchor === null || currentThreat === null) return 1;
+    return clamp01(distance(this.lastCommittedThreatAnchor, currentThreat) / 6);
+  }
+
+  private restoreTactic(previousTactic: string, reason: string): void {
+    const host = this.internal().tacticalHost;
+    if (host.tactic === previousTactic) return;
+    host.transitionTactic?.(previousTactic, reason, false);
   }
 
   private applyFormationHold(state: TacticalWizardSimulationState): void {
@@ -758,6 +1103,19 @@ export class TacticalWizardAdaptiveSimulation {
   private internal(): InternalRuntimeAccess { return this.simulation as unknown as InternalRuntimeAccess; }
 }
 
+function clonePlannerTrace(trace: PressurePlannerTraceView | null): PressurePlannerTraceView | null {
+  if (trace === null) return null;
+  return {
+    ...trace,
+    candidateScores: trace.candidateScores.map((entry) => ({ ...entry })),
+    attempts: trace.attempts.map(clonePlannerAttempt),
+  };
+}
+
+function clonePlannerAttempt(attempt: PressurePlannerAttemptView): PressurePlannerAttemptView {
+  return { ...attempt, target: clonePoint(attempt.target) };
+}
+
 function normalizeProfile(profile: TacticalWizardCombatProfile): TacticalWizardCombatProfile {
   return {
     ...profile,
@@ -769,6 +1127,11 @@ function normalizeProfile(profile: TacticalWizardCombatProfile): TacticalWizardC
     holdGroundBias: clamp01(profile.holdGroundBias),
     counterManeuverBias: clamp01(profile.counterManeuverBias),
     breakContactBias: clamp01(profile.breakContactBias),
+    utilityTradeFireWeight: clamp(profile.utilityTradeFireWeight, 0.25, 1.75),
+    utilityRepositionWeight: clamp(profile.utilityRepositionWeight, 0.25, 1.75),
+    utilityFlankWeight: clamp(profile.utilityFlankWeight, 0.25, 1.75),
+    utilityRegroupWeight: clamp(profile.utilityRegroupWeight, 0.25, 1.75),
+    utilityAssaultWeight: clamp(profile.utilityAssaultWeight, 0.25, 1.75),
   };
 }
 
@@ -781,13 +1144,20 @@ function pointSegmentDistance(point: GridPoint, start: GridPoint, end: GridPoint
   return distance(point, { x: start.x + dx * t, y: start.y + dy * t });
 }
 
+function flankAngleGainDegrees(origin: GridPoint, target: GridPoint, threat: GridPoint): number {
+  const before = normalizedDelta(threat, origin);
+  const after = normalizedDelta(threat, target);
+  const dot = clamp(before.x * after.x + before.y * after.y, -1, 1);
+  return Math.acos(dot) * 180 / Math.PI;
+}
+
+function navCell(point: GridPoint): GridPoint { return { x: Math.round(point.x), y: Math.round(point.y) }; }
 function normalizedDelta(from: GridPoint, to: GridPoint): GridPoint {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.hypot(dx, dy);
   return length <= 1e-6 ? { x: 1, y: 0 } : { x: dx / length, y: dy / length };
 }
-
 function offsetLook(from: GridPoint, anchor: GridPoint, degrees: number, range: number): GridPoint {
   const direction = normalizedDelta(from, anchor);
   const radians = degrees * Math.PI / 180;
@@ -796,9 +1166,9 @@ function offsetLook(from: GridPoint, anchor: GridPoint, degrees: number, range: 
   const rotated = { x: direction.x * cos - direction.y * sin, y: direction.x * sin + direction.y * cos };
   return { x: from.x + rotated.x * range, y: from.y + rotated.y * range };
 }
-
 function clonePoint(point: GridPoint | null): GridPoint | null { return point === null ? null : { ...point }; }
-function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }
+function clamp01(value: number): number { return clamp(value, 0, 1); }
+function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, Number.isFinite(value) ? value : min)); }
 function distance(a: GridPoint, b: GridPoint): number { return Math.hypot(a.x - b.x, a.y - b.y); }
 function isTargetWalkable(point: GridPoint): boolean {
   const x = Math.round(point.x);
