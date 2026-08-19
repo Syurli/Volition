@@ -242,3 +242,10 @@ The invariant for IAUS is now explicit:
 - IAUS candidate validation is transactional: Tactical Host state, plan revision, roles, targets, events, logs, and execution contracts are restored after Preview. Only the winning candidate reaches Commit.
 - `local_reposition` is a single-member Tactical Planning lease. It preserves the current squad doctrine and reseeds that doctrine after arrival; it no longer aliases a squad-wide `regroup`.
 - Mature Crossfire/Assault geometry resists whole-plan pressure switches unless pressure reaches `pinned` or the established geometry/fire lanes have materially degraded.
+
+
+## Recovery R4 capability arbitration
+
+Recovery remains an Operational Arbitration concern, but its contract is now capability-aware. A paired rescue requires a medically capable rescuer and a distinct security member with an armed reserve. If those capabilities change, ownership swaps atomically while casualty reservation and treatment progress remain intact.
+
+`deferred` Recovery is an obligation reservation rather than movement / weapon ownership: normal reduced-pair survival, tactical movement and emergency logistics resume until a new rescue window passes capability and geometry validation. A geometry solver may now reject all candidates (`no_covered_treatment`, `no_security_lane`, `no_viable_geometry`) instead of committing the least-bad exposed treatment point. Repeated identical deferrals increase the retry window rather than creating an execution livelock.

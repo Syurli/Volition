@@ -1,5 +1,7 @@
 # Changelog
 
+- Recovery R4: capability-aware rescuer/security arbitration, atomic role swap with progress preservation, Deferred Survival ownership release, emergency logistics interoperability, covered-geometry rejection, security ammo reserve discipline, and repeated-deferral livelock guards.
+
 
 ## Recovery authority and transactional IAUS planning R3
 
