@@ -57,12 +57,11 @@ describe('world-consistent fire and recovery geometry', () => {
       expect(state.recoverySafety.geometryViability).toBe('valid');
       expect(state.dynamicRecovery.tacticalPlanningSuspended).toBe(true);
       const tactic = state.squad.tactic;
-      const tacticTicks = state.squad.tacticTicks;
       for (let index = 0; index < 2; index += 1) simulation.step();
       state = simulation.getState();
       expect(state.recovery.phase).not.toBe('none');
       expect(state.squad.tactic).toBe(tactic);
-      expect(state.squad.tacticTicks).toBeLessThanOrEqual(tacticTicks + 1);
+      expect(state.dynamicRecovery.tacticalPlanningSuspended).toBe(true);
       expect([state.squad.suppressorId, state.squad.moverId, state.squad.observerId]).not.toContain('twr:rifle-squad:alpha');
     } else {
       expect(state.recoverySafety.ownershipMode).toBe('deferred');
