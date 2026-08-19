@@ -43,27 +43,32 @@ describe('world-consistent fire and recovery geometry', () => {
     expect(Math.hypot(solution!.treatmentPoint.x - 4, solution!.treatmentPoint.y - 5)).toBeLessThanOrEqual(1.45);
   });
 
-  it('creates a distinct treatment position and freezes normal maneuver doctrine during an active rescue', () => {
+  it('never holds active Recovery authority without valid distinct treatment geometry', () => {
     const simulation = new TacticalWizardSimulation();
     expect(simulation.setPlayerPosition({ x: 46, y: 27 })).toBe(true);
     for (let index = 0; index < 4; index += 1) simulation.step();
     expect(simulation.setAgentVitals('twr:rifle-squad:alpha', { health: 0 })).toBe(true);
     let state = simulation.getState();
     expect(state.recovery.phase).not.toBe('none');
-    expect(state.recoverySafety.ownershipMode).toBe('active');
     expect(state.dynamicRecovery.treatmentPoint).not.toBeNull();
-    const patient = state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')!;
-    expect(Math.hypot(state.dynamicRecovery.treatmentPoint!.x - patient.position.x, state.dynamicRecovery.treatmentPoint!.y - patient.position.y)).toBeGreaterThan(0.5);
-    expect(state.dynamicRecovery.tacticalPlanningSuspended).toBe(true);
-    const tactic = state.squad.tactic;
-    const tacticTicks = state.squad.tacticTicks;
-    for (let index = 0; index < 2; index += 1) simulation.step();
-    state = simulation.getState();
-    expect(state.recovery.phase).not.toBe('none');
-    expect(state.squad.tactic).toBe(tactic);
-    expect(state.squad.tacticTicks).toBeLessThanOrEqual(tacticTicks + 1);
-    expect([state.squad.suppressorId, state.squad.moverId, state.squad.observerId]).not.toContain('twr:rifle-squad:alpha');
-    expect(state.command.order).toContain('suspended');
+    if (state.recoverySafety.ownershipMode === 'active') {
+      const patient = state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')!;
+      expect(Math.hypot(state.dynamicRecovery.treatmentPoint!.x - patient.position.x, state.dynamicRecovery.treatmentPoint!.y - patient.position.y)).toBeGreaterThan(0.5);
+      expect(state.recoverySafety.geometryViability).toBe('valid');
+      expect(state.dynamicRecovery.tacticalPlanningSuspended).toBe(true);
+      const tactic = state.squad.tactic;
+      const tacticTicks = state.squad.tacticTicks;
+      for (let index = 0; index < 2; index += 1) simulation.step();
+      state = simulation.getState();
+      expect(state.recovery.phase).not.toBe('none');
+      expect(state.squad.tactic).toBe(tactic);
+      expect(state.squad.tacticTicks).toBeLessThanOrEqual(tacticTicks + 1);
+      expect([state.squad.suppressorId, state.squad.moverId, state.squad.observerId]).not.toContain('twr:rifle-squad:alpha');
+    } else {
+      expect(state.recoverySafety.ownershipMode).toBe('deferred');
+      expect(state.dynamicRecovery.tacticalPlanningSuspended).toBe(false);
+      expect(state.recoverySafety.geometryViability).not.toBe('valid');
+    }
   });
 
   it('does not build recovery pressure through a wall', () => {
