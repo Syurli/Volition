@@ -1202,7 +1202,7 @@ export class TacticalWizardRuntime {
     this.recoveryIneffectiveSinceTick = null;
     const geometryReady = this.replanRecoveryGeometry(state, 'recovery_started', false);
     this.hostAccess().log('squad', 'twr:rifle-squad-01', 'Rifle Squad 01', 'plan', 'Recovery contract committed atomically through capability arbitration.', { patientId: patient.id, rescuerId: assignment.rescuerId, covererId: assignment.covererId, roleReason: assignment.reason, geometryReady });
-    if (!geometryReady && this.recoveryThreatPoint(state) !== null) this.deferRecovery(state, 'no viable covered treatment geometry at recovery start');
+    if (!geometryReady) this.deferRecovery(state, 'Recovery cannot own execution without viable treatment / security geometry');
   }
 
   private validateRecoveryContract(state: TacticalHostState): boolean {
