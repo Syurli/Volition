@@ -4,6 +4,7 @@ import {
   RECOVERY_DEADLOCK_TICKS,
   RECOVERY_MAX_STALL_REPLANS,
   RECOVERY_SECURITY_ARRIVAL,
+  RECOVERY_TREATMENT_MIN_DISTANCE,
   RECOVERY_UNSAFE_ABORT_TICKS,
   RECOVERY_WEAPON_READY_ROUNDS,
   classifyRecoveryPressure,
@@ -1625,7 +1626,9 @@ export class TacticalWizardRuntime {
     const currentPath = isWalkable(tacticalWizardNavigationGrid, currentTreatmentCell) ? findPath(tacticalWizardNavigationGrid, rescuerCell, currentTreatmentCell) : [];
     const currentExposed = threat !== null && hasLineOfSight(tacticalWizardNavigationGrid, currentTreatmentCell, navCell(threat));
     const currentPathExposure = threat === null ? 0 : currentPath.filter((cell) => hasLineOfSight(tacticalWizardNavigationGrid, cell, navCell(threat))).length;
-    const preserveTreatment = scope === 'validate' && currentPath.length > 0 && !currentExposed && currentPathExposure === 0;
+    const currentTreatmentDistance = distance(plan.treatmentPoint, patient.position);
+    const currentTreatmentInRange = currentTreatmentDistance >= RECOVERY_TREATMENT_MIN_DISTANCE && currentTreatmentDistance <= RECOVERY_RANGE;
+    const preserveTreatment = scope === 'validate' && currentTreatmentInRange && currentPath.length > 0 && !currentExposed && currentPathExposure === 0;
     if (preserveTreatment) {
       this.recoveryGeometryViability = 'valid';
       plan.treatmentExposed = false;
