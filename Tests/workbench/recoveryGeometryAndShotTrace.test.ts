@@ -43,13 +43,14 @@ describe('world-consistent fire and recovery geometry', () => {
     expect(Math.hypot(solution!.treatmentPoint.x - 4, solution!.treatmentPoint.y - 5)).toBeLessThanOrEqual(1.45);
   });
 
-  it('creates a distinct treatment position and freezes normal maneuver doctrine during rescue', () => {
+  it('creates a distinct treatment position and freezes normal maneuver doctrine during an active rescue', () => {
     const simulation = new TacticalWizardSimulation();
-    expect(simulation.setPlayerPosition({ x: 6, y: 2 })).toBe(true);
+    expect(simulation.setPlayerPosition({ x: 46, y: 27 })).toBe(true);
     for (let index = 0; index < 4; index += 1) simulation.step();
     expect(simulation.setAgentVitals('twr:rifle-squad:alpha', { health: 0 })).toBe(true);
     let state = simulation.getState();
     expect(state.recovery.phase).not.toBe('none');
+    expect(state.recoverySafety.ownershipMode).toBe('active');
     expect(state.dynamicRecovery.treatmentPoint).not.toBeNull();
     const patient = state.agents.find((agent) => agent.id === 'twr:rifle-squad:alpha')!;
     expect(Math.hypot(state.dynamicRecovery.treatmentPoint!.x - patient.position.x, state.dynamicRecovery.treatmentPoint!.y - patient.position.y)).toBeGreaterThan(0.5);
