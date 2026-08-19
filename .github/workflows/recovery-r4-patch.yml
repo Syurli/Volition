@@ -1,0 +1,28 @@
+name: Recovery R4 Patch
+
+on:
+  push:
+    branches:
+      - agent/recovery-r4-capability-arbitration-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Apply Recovery R4 capability arbitration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Recovery R4 patch
+        run: python scripts/apply_recovery_r4.py
+      - name: Commit patched runtime
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Apps/Workbench/src/simulation/tacticalWizardRuntime.ts Apps/Workbench/src/simulation/CURRENT_RUNTIME.md CHANGELOG.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Apply Recovery R4 capability arbitration"
+          git push
