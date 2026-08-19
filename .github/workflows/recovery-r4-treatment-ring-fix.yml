@@ -1,0 +1,43 @@
+name: Recovery R4 Treatment Ring Fix
+
+on:
+  push:
+    branches:
+      - agent/recovery-r4-capability-arbitration-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Validate treatment ring before preserving Recovery geometry'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch treatment geometry invariant
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('Apps/Workbench/src/simulation/tacticalWizardRuntime.ts')
+          s = p.read_text()
+          old_import = "  RECOVERY_SECURITY_ARRIVAL,\n  RECOVERY_UNSAFE_ABORT_TICKS,"
+          new_import = "  RECOVERY_SECURITY_ARRIVAL,\n  RECOVERY_TREATMENT_MIN_DISTANCE,\n  RECOVERY_UNSAFE_ABORT_TICKS,"
+          if s.count(old_import) != 1:
+              raise SystemExit(f'import anchor count {s.count(old_import)}')
+          s = s.replace(old_import, new_import, 1)
+          old = "    const preserveTreatment = scope === 'validate' && currentPath.length > 0 && !currentExposed && currentPathExposure === 0;"
+          new = "    const currentTreatmentDistance = distance(plan.treatmentPoint, patient.position);\n    const currentTreatmentInRange = currentTreatmentDistance >= RECOVERY_TREATMENT_MIN_DISTANCE && currentTreatmentDistance <= RECOVERY_RANGE;\n    const preserveTreatment = scope === 'validate' && currentTreatmentInRange && currentPath.length > 0 && !currentExposed && currentPathExposure === 0;"
+          if s.count(old) != 1:
+              raise SystemExit(f'preserve anchor count {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit runtime invariant
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Apps/Workbench/src/simulation/tacticalWizardRuntime.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "Validate treatment ring before preserving Recovery geometry"
+          git push
